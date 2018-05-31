@@ -8,9 +8,10 @@ N_TIME = 200
 N_HIDDEN = 20
 N_INPUT = 2
 N_OUTPUT = 2
-LR_BASE = 5e-3
+LR_BASE = 1e-1
 BATCH_SIZE = 4
 ITRS = 800
+REG = 1e-5
 
 #%% Generate a sample
 t = sp.linspace(0,10,N_TIME)
@@ -26,7 +27,7 @@ def gen_sample(f, vnoise, xnoise):
     return sp.stack([true_x,true_vx]).T, sp.stack([noisy_x,noisy_vx]).T
 
 #%%
-y_batch, x_batch = list(zip(*[gen_sample(f, 0.2, 0.2) for f in [sp.sin,lambda x: sp.cos(x)+1,lambda x: 0.5*x/max(t),lambda x: 0.25*(sp.sin(x)+sp.cos(x)**2)]]))
+y_batch, x_batch = list(zip(*[gen_sample(f, 0.3, 0.2) for f in [sp.sin,lambda x: sp.cos(x)+1,lambda x: 0.5*x/max(t),lambda x: 0.25*(sp.sin(x)+sp.cos(x)**2)]]))
 batch_y= sp.stack(y_batch)
 batch_x= sp.stack(x_batch)
 print(batch_y.shape,batch_x.shape)
@@ -43,15 +44,15 @@ with g1.as_default():
     
     
     #defining the network as two stacked layers of LSTMs
-    lstm_layers=[tf.nn.rnn_cell.BasicLSTMCell(size,forget_bias=0.4) for size in [N_HIDDEN]]
+    lstm_layers=[tf.nn.rnn_cell.BasicLSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
     lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
     
     #Unroll the rnns
     outputs, state = tf.nn.dynamic_rnn(lstm_cell,x,dtype=tf.float32)
     print('Outputs:', outputs.shape)
-    predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu)(outputs)
-    predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu)(predictions)
-    predictions = tf.layers.Dense(N_OUTPUT, activation=None)(predictions)
+    predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs)
+    predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(predictions)
+    predictions = tf.layers.Dense(N_OUTPUT, activation=None,activity_regularizer=lambda x:REG*tf.nn.l2_loss(x))(predictions)
     print('Predictions:', predictions.shape)
     
     #loss_function
@@ -74,7 +75,7 @@ with tf.Session(graph=g1) as sess:
         sess.run(opt, feed_dict={x: batch_x, y: batch_y, lr:learning_rate})
         
         if itr %20==0:
-            learning_rate *= 0.91
+            learning_rate *= 0.93
             los,out=sess.run([loss,predictions],feed_dict={x:batch_x,y:batch_y,lr:learning_rate})
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
             print("Loss ",los)
@@ -84,7 +85,7 @@ with tf.Session(graph=g1) as sess:
         
 
 #%% Plot the fit    
-plt.figure(figsize=(14,7))
+plt.figure(figsize=(14,16))
 for batch_idx in range(BATCH_SIZE):
     out_x = sp.squeeze(out[batch_idx,:,0])
     out_vx = sp.squeeze(out[batch_idx,:,1])
@@ -94,20 +95,20 @@ for batch_idx in range(BATCH_SIZE):
     true_vx = batch_y[batch_idx,:,1]
     
     plt.subplot(20+(BATCH_SIZE)*100 + batch_idx*2+1)
-    plt.title('Location x')
-    plt.plot(t,noisy_x,label='measured')
-    plt.plot(t,true_x,label='true')
-    plt.plot(t,out_x,label='LSTM')
+    if batch_idx == 0: plt.title('Location x')
+    plt.plot(t,true_x,lw=2,label='true')
+    plt.plot(t,noisy_x,lw=1,label='measured')
+    plt.plot(t,out_x,lw=1,label='LSTM')
     plt.grid(which='both')
     plt.ylabel('x[m]')
     plt.xlabel('time[s]')
     plt.legend()
     
-    plt.subplot(20+(BATCH_SIZE)*100 + batch_idx*2+1)
-    plt.title('Velocity x')
-    plt.plot(t,noisy_vx,label='measured')
-    plt.plot(t,true_vx,label='true')
-    plt.plot(t,out_vx,label='LSTM')
+    plt.subplot(20+(BATCH_SIZE)*100 + batch_idx*2+2)
+    if batch_idx == 0: plt.title('Velocity x')
+    plt.plot(t,true_vx,lw=2,label='true')
+    plt.plot(t,noisy_vx,lw=1,label='measured')
+    plt.plot(t,out_vx,lw=1,label='LSTM')
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
     plt.grid(which='both')
