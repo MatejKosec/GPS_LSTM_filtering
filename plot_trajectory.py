@@ -4,7 +4,7 @@ from scipy.integrate import cumtrapz
 from matplotlib import pyplot as plt
 
 #%% Constants
-N_TIME = 200
+N_TIME = 100
 N_HIDDEN = 20
 N_INPUT = 2
 N_OUTPUT = 2
@@ -44,7 +44,7 @@ with g1.as_default():
     
     
     #defining the network as two stacked layers of LSTMs
-    lstm_layers=[tf.nn.rnn_cell.BasicLSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
+    lstm_layers=[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9, use_peepholes=True) for size in [N_HIDDEN]]
     lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
     
     #Unroll the rnns
