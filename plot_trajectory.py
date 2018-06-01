@@ -82,8 +82,26 @@ with tf.Session(graph=g1) as sess:
             print("__________________")
 
         itr=itr+1
-        
+#%% Compute the EKF results
+from KalmanFilterClass import LinearKalmanFilter1D, Data1D
+batch_kalman = []
+deltaT = sp.mean(t[1:] - t[0:-1])
+state0 = sp.array([0, 0]).T
+P0     = sp.identity(2)*0.1
+F0     = sp.array([[1, deltaT],\
+                   [0, 1]])
+H0     = sp.identity(2)
+Q0     = sp.diagflat([0.005,0.0001])
+R0     = sp.diagflat([0.25,0.001])
 
+for i in range(BATCH_SIZE):
+    data = Data1D(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),[])
+    filter1b = LinearKalmanFilter1D(F0, H0, P0, Q0, R0, state0)
+    kalman_data = filter1b.process_data(data)
+    batch_kalman.append(sp.vstack([kalman_data.x[1:], kalman_data.vx[1:]]).T)
+    
+xk_batch = sp.stack(batch_kalman)
+print(xk_batch.shape)
 #%% Plot the fit    
 plt.figure(figsize=(14,16))
 for batch_idx in range(BATCH_SIZE):
@@ -98,6 +116,7 @@ for batch_idx in range(BATCH_SIZE):
     if batch_idx == 0: plt.title('Location x')
     plt.plot(t,true_x,lw=2,label='true')
     plt.plot(t,noisy_x,lw=1,label='measured')
+    plt.plot(t,sp.squeeze(xk_batch[batch_idx,:,0]),lw=1,label='Linear KF')
     plt.plot(t,out_x,lw=1,label='LSTM')
     plt.grid(which='both')
     plt.ylabel('x[m]')
@@ -108,9 +127,12 @@ for batch_idx in range(BATCH_SIZE):
     if batch_idx == 0: plt.title('Velocity x')
     plt.plot(t,true_vx,lw=2,label='true')
     plt.plot(t,noisy_vx,lw=1,label='measured')
+    plt.plot(t,sp.squeeze(xk_batch[batch_idx,:,1]),lw=1,label='Linear KF')
     plt.plot(t,out_vx,lw=1,label='LSTM')
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
     plt.grid(which='both')
     plt.legend()
+    
+plt.savefig('1Dexample.png',dpi=300)
     

@@ -19,7 +19,65 @@ def quadratic_form(b,K):
 from collections import namedtuple
 
 Data = namedtuple('Data',['x','y','vx','vy','prx','pry'])
+Data1D = namedtuple('Data1D',['x','vx','prx'])
 DOPS = namedtuple('DOPS',['x','y','p'])
+
+class LinearKalmanFilter1D(object):
+    def __init__(self, F, H, P, Q, R, initialState):
+        self.F = F
+        self.H = H
+        self.P = P
+        self.Q = Q
+        self.R = R
+        self.hard_reset(initialState)
+        
+    
+    def hard_reset(self, state):
+        self.state = state
+        self.data = Data1D([],[],[])
+        self.append_data()
+    
+    def predict(self):
+        #Use the system dynawmics to predict how well we are fittinig
+        self.predictedState = dot([self.F, self.state])
+        self.predictedP = quadratic_form(self.F, self.P)+ self.Q
+
+    def update(self, measuredState):
+        #Compte the residual between measurement and prediction
+        self.prefitResidual = measuredState - dot([self.H, self.predictedState])
+        
+        #Compute the Klaman gain
+        intermediate = sp.linalg.inv(self.R + quadratic_form(self.H, self.predictedP))
+        self.Kt = dot([self.predictedP, self.H.T,intermediate])
+        
+        #Update the state
+        self.state = self.predictedState + dot([self.Kt, self.prefitResidual])
+        
+        #Update covariance matrix
+        self.P = quadratic_form(\
+                sp.identity(self.Kt.shape[0]) - dot([self.Kt,self.H]), self.predictedP)\
+                + quadratic_form(self.Kt, self.R)
+
+        #Compute the postfit residual to see how well we are doing
+        self.postfitResidual = measuredState - dot([self.H,self.state])
+        
+        #Store the results
+        self.append_data()
+        self.data.prx.append(self.prefitResidual[0])
+        
+    def append_data(self):
+        self.data.x.append(self.state[0])
+        self.data.vx.append(self.state[1])
+        
+    def process_data(self, data):
+        for i in range(len(data.x)):
+            m = sp.array([data.x[i],data.vx[i]]).T
+            self.predict()
+            self.update(m)
+        
+        return self.data
+
+
 
 class LinearKalmanFilter(object):
     def __init__(self, F, H, P, Q, R, initialState):
