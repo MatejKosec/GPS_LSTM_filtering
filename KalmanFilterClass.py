@@ -79,7 +79,7 @@ class LinearKalmanFilter1D(object):
 
 
 
-class LinearKalmanFilter(object):
+class LinearKalmanFilter2D(object):
     def __init__(self, F, H, P, Q, R, initialState):
         self.F = F
         self.H = H

@@ -20,8 +20,8 @@ def gen_sample(f, vnoise, xnoise):
     true_x  = cumtrapz(true_vx,t)
     true_x  = sp.hstack([[0],true_x])
     
-    noisy_vx = f(t+sp.random.rand(*t.shape)*xnoise)+sp.random.rand(*t.shape)*vnoise
-    noisy_x  = true_x+sp.random.rand(*t.shape)*xnoise
+    noisy_vx = f(t+sp.random.randn(*t.shape)*xnoise)+sp.random.randn(*t.shape)*vnoise
+    noisy_x  = true_x+sp.random.randn(*t.shape)*xnoise
     noisy_x  = noisy_x
     
     return sp.stack([true_x,true_vx]).T, sp.stack([noisy_x,noisy_vx]).T
