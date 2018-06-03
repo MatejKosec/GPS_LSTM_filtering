@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.contrib.seq2seq import TrainingHelper, BasicDecoder, dynamic_decode
+from tensorflow.contrib.seq2seq import TrainingHelper, BasicDecoder, dynamic_decode,LuongAttention, AttentionWrapper
 import scipy as sp
 from scipy.integrate import cumtrapz
 from matplotlib import pyplot as plt
@@ -10,6 +10,7 @@ N_TIME = 100
 N_HIDDEN = 20
 N_INPUT = 2
 N_OUTPUT = 2
+N_ATTN  = 10
 LR_BASE = 1e-1
 BATCH_SIZE = 4
 ITRS = 800
@@ -48,11 +49,7 @@ with g1.as_default():
     #defining the network as stacked layers of LSTMs
     lstm_layers=[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
     lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
-    
-    #Unroll the RNNS
-    #outputs, state = tf.nn.dynamic_rnn(lstm_cell,x,dtype=tf.float32)
-    #print('Outputs:', outputs.shape)
-    
+
     #Training helper
     helper = TrainingHelper(x, N_TIME*tf.ones([BATCH_SIZE],dtype=tf.int32))
     
@@ -62,6 +59,16 @@ with g1.as_default():
 
     #Unroll the RNNS
     outputs, state, lengths = dynamic_decode(decoder)
+    
+    #Attention mechanism
+    attention_mechanism = LuongAttention(
+    N_ATTN, outputs.rnn_output)
+    
+    #Decoder cell with attention    
+    decoder_cell = AttentionWrapper(
+    lstm_cell, attention_mechanism,
+    attention_layer_size=N_ATTN)
+
     
     #Output projection layer
     projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs.rnn_output)
@@ -148,5 +155,5 @@ for batch_idx in range(BATCH_SIZE):
     plt.grid(which='both')
     plt.legend()
     
-plt.savefig('1Dexample.png',dpi=300)
+plt.savefig('1Dexample.png',dpi=200)
     
