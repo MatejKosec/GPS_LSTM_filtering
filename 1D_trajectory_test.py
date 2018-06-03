@@ -1,4 +1,5 @@
 import tensorflow as tf
+import functools
 from tensorflow.contrib.seq2seq import TrainingHelper, BasicDecoder, dynamic_decode,LuongAttention, AttentionWrapper
 import scipy as sp
 from scipy.integrate import cumtrapz
@@ -108,9 +109,10 @@ with g1.as_default():
     init=tf.global_variables_initializer()
     print('Added initializer')
 
+    #Count the trainable parameters 
+    shapes = [functools.reduce(lambda x,y: x*y,variable.get_shape()) for variable in tf.trainable_variables()]
+    print('Nparams: ', functools.reduce(lambda x,y: x+y, shapes))
 #%%
-
-
 with tf.Session(graph=g1) as sess:
     sess.run(init)
     itr=1
