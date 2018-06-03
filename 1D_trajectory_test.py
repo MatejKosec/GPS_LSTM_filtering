@@ -7,10 +7,9 @@ from matplotlib import pyplot as plt
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 20
+N_HIDDEN = 10
 N_INPUT = 2
 N_OUTPUT = 2
-N_ATTN  = 10
 LR_BASE = 1e-1
 BATCH_SIZE = 4
 ITRS = 800
@@ -45,7 +44,6 @@ with g1.as_default():
     lr=tf.placeholder(dtype=tf.float32,shape=())
     
     
-    
     #defining the network as stacked layers of LSTMs
     lstm_layers=[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
     lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
@@ -53,29 +51,30 @@ with g1.as_default():
     #Self attention mechanism
     Wattn = tf.get_variable('attentionWeights', dtype =tf.float32, shape=[N_HIDDEN,N_HIDDEN],\
                             initializer=tf.contrib.layers.xavier_initializer())
+    Wcont = tf.get_variable('ContextWeights', dtype =tf.float32, shape=[2*N_HIDDEN,N_HIDDEN],\
+                            initializer=tf.contrib.layers.xavier_initializer())
     state = lstm_cell.zero_state(BATCH_SIZE, tf.float32)
-    outputs = tf.zeros([BATCH_SIZE,N_TIME,N_HIDDEN])
-    idx_mask_template  = tf.tile(tf.reshape(tf.range(N_TIME),[1,N_TIME]),[BATCH_SIZE,1])
     for i in range(N_TIME):
         output, state = lstm_cell(x[:,i,:], state)
-        
-        #Tile the current state for attending
-        output = tf.reshape(output,[1,BATCH_SIZE,N_HIDDEN])
-        #output = tf.tile(output,[N_TIME,1,1])
-        output = tf.transpose(output,[1,0,2])
-        attention_logits = tf.squeeze(tf.matmul(output,tf.transpose(outputs,[0,2,1])))
-        attention_logits = tf.where(idx_mask_template<=i ,attention_logits,\
-                                    tf.zeros_like(attention_logits)-1e12)
-        attention_weights = tf.nn.softmax(attention_logits,axis=1)
-        attention_weights = tf.expand_dims(attention_logits,axis=2)
-        #print('attentionWeights',attention_logits)
-        #Compute the attended output state
-        output = tf.reduce_sum(attention_weights*outputs,axis=1)
-        outputs[:,i,:] = output
-    
-        
+        if i == 0:
+            outputs= tf.transpose(tf.reshape(output,[1,BATCH_SIZE,N_HIDDEN]), [1,0,2])
+        else:
+            #Transpose the output for processing
+            output = tf.reshape(output,[1,BATCH_SIZE,N_HIDDEN])
+            #output = tf.tile(output,[N_TIME,1,1])
+            output = tf.transpose(output,[1,0,2])
+            raw_output = output #save for later
+            output = tf.tensordot(output,Wattn,axes=[[2],[0]])
+            attention_logits = tf.transpose(tf.matmul(output,tf.transpose(outputs,[0,2,1])),[0,2,1])
+            attention_weights = tf.nn.softmax(attention_logits,axis=1)
+            #Compute the context state
+            context = tf.reduce_sum(attention_weights*outputs,axis=1,keep_dims=True)
             
-    
+            #Mix context and raw output
+            output  = tf.nn.tanh(tf.tensordot(tf.concat([raw_output,context],axis=2),Wcont,axes=[[2],[0]]))
+            outputs = tf.concat([outputs,output],axis=1)
+    print('Unrolled')
+        
     #Output projection layer
     projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs)
     predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(projection_layer)
@@ -86,9 +85,11 @@ with g1.as_default():
     loss= tf.reduce_mean((y-predictions)**2)
     #optimization
     opt=tf.train.AdamOptimizer(learning_rate=lr).minimize(loss)
+    print('Compiled loss and trainer')
     
     #initialize variables
     init=tf.global_variables_initializer()
+    print('Added initializer')
 
 #%%
 
@@ -102,7 +103,7 @@ with tf.Session(graph=g1) as sess:
         sess.run(opt, feed_dict={x: batch_x, y: batch_y, lr:learning_rate})
         
         if itr %20==0:
-            learning_rate *= 0.93
+            learning_rate *= 0.92
             los,out=sess.run([loss,predictions],feed_dict={x:batch_x,y:batch_y,lr:learning_rate})
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
             print("Loss ",los)
