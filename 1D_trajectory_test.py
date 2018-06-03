@@ -6,9 +6,10 @@ from matplotlib import pyplot as plt
 
 
 #%% Constants
-N_TIME = 100
+N_TIME = 80
 N_HIDDEN = 10
 N_INPUT = 2
+N_ATTN  = 7 #< N_TIME
 N_OUTPUT = 2
 LR_BASE = 1e-1
 BATCH_SIZE = 4
@@ -45,8 +46,9 @@ with g1.as_default():
     
     
     #defining the network as stacked layers of LSTMs
-    lstm_layers=[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
-    lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
+    #lstm_layers =[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
+    #lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
+    lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.9)
     
     #Self attention mechanism
     Wattn = tf.get_variable('attentionWeights', dtype =tf.float32, shape=[N_HIDDEN,N_HIDDEN],\
@@ -57,22 +59,29 @@ with g1.as_default():
     for i in range(N_TIME):
         output, state = lstm_cell(x[:,i,:], state)
         if i == 0:
-            outputs= tf.transpose(tf.reshape(output,[1,BATCH_SIZE,N_HIDDEN]), [1,0,2])
+            outputs= tf.expand_dims(output,axis=1)
         else:
             #Transpose the output for processing
-            output = tf.reshape(output,[1,BATCH_SIZE,N_HIDDEN])
-            #output = tf.tile(output,[N_TIME,1,1])
-            output = tf.transpose(output,[1,0,2])
+            output = tf.expand_dims(output,axis=1)
             raw_output = output #save for later
-            output = tf.tensordot(output,Wattn,axes=[[2],[0]])
-            attention_logits = tf.transpose(tf.matmul(output,tf.transpose(outputs,[0,2,1])),[0,2,1])
+            
+            #The context window
+            windowed_outputs = outputs[:,max(i-N_ATTN,0):i,:]
+            
+            #Two step context weighing
+            attention_logits = tf.tensordot(output,Wattn,axes=[[2],[0]])
+            attention_logits = tf.transpose(tf.matmul(attention_logits,tf.transpose(windowed_outputs,[0,2,1])),[0,2,1])
             attention_weights = tf.nn.softmax(attention_logits,axis=1)
             #Compute the context state
-            context = tf.reduce_sum(attention_weights*outputs,axis=1,keep_dims=True)
+            context = tf.reduce_sum(attention_weights*windowed_outputs,axis=1,keepdims=True)
             
             #Mix context and raw output
             output  = tf.nn.tanh(tf.tensordot(tf.concat([raw_output,context],axis=2),Wcont,axes=[[2],[0]]))
             outputs = tf.concat([outputs,output],axis=1)
+            
+            #Set the state  for the LSTM to the attended output
+            state = tf.nn.rnn_cell.LSTMStateTuple(tf.squeeze(output),tf.squeeze(raw_output))
+            
     print('Unrolled')
         
     #Output projection layer
@@ -103,7 +112,7 @@ with tf.Session(graph=g1) as sess:
         sess.run(opt, feed_dict={x: batch_x, y: batch_y, lr:learning_rate})
         
         if itr %20==0:
-            learning_rate *= 0.92
+            learning_rate *= 0.93
             los,out=sess.run([loss,predictions],feed_dict={x:batch_x,y:batch_y,lr:learning_rate})
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
             print("Loss ",los)
