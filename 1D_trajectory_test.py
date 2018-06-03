@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 N_TIME = 80
 N_HIDDEN = 10
 N_INPUT = 2
-N_ATTN  = 7 #< N_TIME
+N_ATTN  = 12 #< N_TIME how many previous steps to attend to
 N_OUTPUT = 2
 LR_BASE = 1e-1
 BATCH_SIZE = 4
@@ -55,11 +55,15 @@ with g1.as_default():
                             initializer=tf.contrib.layers.xavier_initializer())
     Wcont = tf.get_variable('ContextWeights', dtype =tf.float32, shape=[2*N_HIDDEN,N_HIDDEN],\
                             initializer=tf.contrib.layers.xavier_initializer())
+    
+    #Initialize the LSTM
     state = lstm_cell.zero_state(BATCH_SIZE, tf.float32)
     for i in range(N_TIME):
+        #Feed inputs to the lstm
         output, state = lstm_cell(x[:,i,:], state)
+        #No attention options for first timestep (replicate measurement)
         if i == 0:
-            outputs= tf.expand_dims(output,axis=1)
+            outputs = tf.expand_dims(output,axis=1)
         else:
             #Transpose the output for processing
             output = tf.expand_dims(output,axis=1)
@@ -83,10 +87,14 @@ with g1.as_default():
             state = tf.nn.rnn_cell.LSTMStateTuple(tf.squeeze(output),tf.squeeze(raw_output))
             
     print('Unrolled')
-        
+    
+    #Skip connection to original input
+    outputs = tf.concat([outputs,x],axis=2)
+    
     #Output projection layer
     projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs)
     predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(projection_layer)
+    #Final output layer
     predictions = tf.layers.Dense(N_OUTPUT, activation=None,activity_regularizer=lambda x:REG*tf.nn.l2_loss(x))(predictions)
     print('Predictions:', predictions.shape)
     
