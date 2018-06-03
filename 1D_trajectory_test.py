@@ -49,29 +49,35 @@ with g1.as_default():
     #defining the network as stacked layers of LSTMs
     lstm_layers=[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
     lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
-
-    #Training helper
-    helper = TrainingHelper(x, N_TIME*tf.ones([BATCH_SIZE],dtype=tf.int32))
     
-    #Decoder (for training)
-    decoder = BasicDecoder(
-    lstm_cell, helper, initial_state=lstm_cell.zero_state(BATCH_SIZE,dtype=tf.float32))
-
-    #Unroll the RNNS
-    outputs, state, lengths = dynamic_decode(decoder)
+    #Self attention mechanism
+    Wattn = tf.get_variable('attentionWeights', dtype =tf.float32, shape=[N_HIDDEN,N_HIDDEN],\
+                            initializer=tf.contrib.layers.xavier_initializer())
+    state = lstm_cell.zero_state(BATCH_SIZE, tf.float32)
+    outputs = tf.zeros([BATCH_SIZE,N_TIME,N_HIDDEN])
+    idx_mask_template  = tf.tile(tf.reshape(tf.range(N_TIME),[1,N_TIME]),[BATCH_SIZE,1])
+    for i in range(N_TIME):
+        output, state = lstm_cell(x[:,i,:], state)
+        
+        #Tile the current state for attending
+        output = tf.reshape(output,[1,BATCH_SIZE,N_HIDDEN])
+        #output = tf.tile(output,[N_TIME,1,1])
+        output = tf.transpose(output,[1,0,2])
+        attention_logits = tf.squeeze(tf.matmul(output,tf.transpose(outputs,[0,2,1])))
+        attention_logits = tf.where(idx_mask_template<=i ,attention_logits,\
+                                    tf.zeros_like(attention_logits)-1e12)
+        attention_weights = tf.nn.softmax(attention_logits,axis=1)
+        attention_weights = tf.expand_dims(attention_logits,axis=2)
+        #print('attentionWeights',attention_logits)
+        #Compute the attended output state
+        output = tf.reduce_sum(attention_weights*outputs,axis=1)
+        outputs[:,i,:] = output
     
-    #Attention mechanism
-    attention_mechanism = LuongAttention(
-    N_ATTN, outputs.rnn_output)
-    
-    #Decoder cell with attention    
-    decoder_cell = AttentionWrapper(
-    lstm_cell, attention_mechanism,
-    attention_layer_size=N_ATTN)
-
+        
+            
     
     #Output projection layer
-    projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs.rnn_output)
+    projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs)
     predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(projection_layer)
     predictions = tf.layers.Dense(N_OUTPUT, activation=None,activity_regularizer=lambda x:REG*tf.nn.l2_loss(x))(predictions)
     print('Predictions:', predictions.shape)
