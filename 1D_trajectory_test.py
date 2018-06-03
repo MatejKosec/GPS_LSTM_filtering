@@ -1,7 +1,9 @@
 import tensorflow as tf
+from tensorflow.contrib.seq2seq import TrainingHelper, BasicDecoder, dynamic_decode
 import scipy as sp
 from scipy.integrate import cumtrapz
 from matplotlib import pyplot as plt
+
 
 #%% Constants
 N_TIME = 100
@@ -43,15 +45,27 @@ with g1.as_default():
     
     
     
-    #defining the network as two stacked layers of LSTMs
-    lstm_layers=[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9, use_peepholes=True) for size in [N_HIDDEN]]
+    #defining the network as stacked layers of LSTMs
+    lstm_layers=[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
     lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
     
-    #Unroll the rnns
-    outputs, state = tf.nn.dynamic_rnn(lstm_cell,x,dtype=tf.float32)
-    print('Outputs:', outputs.shape)
-    predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs)
-    predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(predictions)
+    #Unroll the RNNS
+    #outputs, state = tf.nn.dynamic_rnn(lstm_cell,x,dtype=tf.float32)
+    #print('Outputs:', outputs.shape)
+    
+    #Training helper
+    helper = TrainingHelper(x, N_TIME*tf.ones([BATCH_SIZE],dtype=tf.int32))
+    
+    #Decoder (for training)
+    decoder = BasicDecoder(
+    lstm_cell, helper, initial_state=lstm_cell.zero_state(BATCH_SIZE,dtype=tf.float32))
+
+    #Unroll the RNNS
+    outputs, state, lengths = dynamic_decode(decoder)
+    
+    #Output projection layer
+    projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs.rnn_output)
+    predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(projection_layer)
     predictions = tf.layers.Dense(N_OUTPUT, activation=None,activity_regularizer=lambda x:REG*tf.nn.l2_loss(x))(predictions)
     print('Predictions:', predictions.shape)
     
