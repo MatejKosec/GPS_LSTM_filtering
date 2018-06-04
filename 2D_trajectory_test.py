@@ -8,10 +8,11 @@ from matplotlib import pyplot as plt
 
 
 #%% Constants
-N_TIME = 80
-N_HIDDEN = 10
+N_TIME = 100
+N_HIDDEN = 8
 N_INPUT = 4
-N_ATTN  = 12 #< N_TIME how many previous steps to attend to
+N_ATTN  = 8 #< N_TIME how many previous steps to attend to
+N_PLOTS = 4
 N_OUTPUT = 4
 LR_BASE = 1e-1
 BATCH_SIZE = 12
@@ -21,8 +22,8 @@ REG = 1e-5
 #%% Generate a sample
 t = sp.linspace(0,10,N_TIME)
 def gen_sample(f, vnoise, xnoise):
-    true_vy = [f[1](tprime) for tprime in t[:N_TIME//4]]+[0.0]*(N_TIME//4)+[f[1](tprime) for tprime in t[N_TIME//2:3*N_TIME//4]] +[0.0]*(N_TIME//4)
-    true_vx = [0.0]*(N_TIME//4)+[f[0](tprime) for tprime in t[N_TIME//4:N_TIME//2]] + [0.0]*(N_TIME//4) + [f[0](tprime) for tprime in t[3*N_TIME//4:]]
+    true_vy = [f[1](tprime) for tprime in t[:N_TIME//4]]+[0.0]*(N_TIME//4)+[-f[1](tprime) for tprime in t[N_TIME//2:3*N_TIME//4]] +[0.0]*(N_TIME//4)
+    true_vx = [0.0]*(N_TIME//4)+[f[0](tprime) for tprime in t[N_TIME//4:N_TIME//2]] + [0.0]*(N_TIME//4) + [-f[0](tprime) for tprime in t[3*N_TIME//4:]]
     true_v  = sp.vstack([true_vx,true_vy])
     true_x  = cumtrapz(true_v,t)
     true_x  = sp.hstack([[[0],[0]],true_x])
@@ -34,9 +35,10 @@ def gen_sample(f, vnoise, xnoise):
     return sp.vstack([true_x,true_v]).T, sp.vstack([noisy_x,noisy_v]).T
 
 #%%
-f1D = [sp.sin,lambda x: sp.cos(x)+1,lambda y: 0.5*y/max(t),lambda z: 0.25*(sp.sin(z)+sp.cos(z)**2)]
+#f1D = [sp.sin,lambda x: sp.cos(x)+1,lambda y: 0.5*y/max(t),lambda z: 0.25*(sp.sin(z)+sp.cos(z)**2)]
+f1D = [lambda x: x/max(t),lambda f: f/max(t), sp.sin, sp.cos]
 fcouples = permutations(f1D,2)
-y_batch, x_batch = list(zip(*[gen_sample(f, 0.3, 0.2) for f in fcouples]))
+y_batch, x_batch = list(zip(*[gen_sample(f, 0.1, 0.2) for f in fcouples]))
 batch_y= sp.stack(y_batch)
 batch_x= sp.stack(x_batch)
 print(batch_y.shape,batch_x.shape)
@@ -54,7 +56,7 @@ with g1.as_default():
     #defining the network as stacked layers of LSTMs
     #lstm_layers =[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
     #lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
-    lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.9)
+    lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.95)
     
     #Self attention mechanism
     Wattn = tf.get_variable('attentionWeights', dtype =tf.float32, shape=[N_HIDDEN,N_HIDDEN],\
@@ -135,56 +137,77 @@ with tf.Session(graph=g1) as sess:
 
         itr=itr+1
 #%% Compute the EKF results
-from KalmanFilterClass import LinearKalmanFilter1D, Data1D
+from KalmanFilterClass import LinearKalmanFilter2D, Data
 batch_kalman = []
-deltaT = sp.mean(t[1:] - t[0:-1])
-state0 = sp.array([0, 0]).T
-P0     = sp.identity(2)*0.1
-F0     = sp.array([[1, deltaT],\
-                   [0, 1]])
-H0     = sp.identity(2)
-Q0     = sp.diagflat([0.005,0.0001])
-R0     = sp.diagflat([0.25,0.001])
-
 for i in range(BATCH_SIZE):
-    data = Data1D(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),[])
-    filter1b = LinearKalmanFilter1D(F0, H0, P0, Q0, R0, state0)
+    deltaT = sp.mean(t[1:] - t[0:-1])
+    state0 = sp.squeeze(batch_x[i,0,:])
+    P0     = sp.identity(4)*0.1
+    F0     = sp.array([[1, 0, deltaT, 0],\
+                       [0, 1, 0, deltaT],\
+                       [0, 0, 1, 0],\
+                       [0, 0, 0, 1]])
+    H0     = sp.identity(4)
+    Q0     = sp.diagflat([0.005,0.005,0.0001,0.0001])
+    R0     = sp.diagflat([0.25,0.25,0.001,0.001])
+
+
+    data = Data(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),sp.squeeze(batch_x[i,:,2]),sp.squeeze(batch_x[i,:,3]),[],[])
+    filter1b = LinearKalmanFilter2D(F0, H0, P0, Q0, R0, state0)
     kalman_data = filter1b.process_data(data)
-    batch_kalman.append(sp.vstack([kalman_data.x[1:], kalman_data.vx[1:]]).T)
+    batch_kalman.append(sp.vstack([kalman_data.x[1:],kalman_data.y[1:], kalman_data.vx[1:], kalman_data.vy[1:]]).T)
     
 xk_batch = sp.stack(batch_kalman)
+xk_batch - batch_y
+print('Kalman loss; ', sp.mean(pow(xk_batch - batch_y,2)))
 print(xk_batch.shape)
 #%% Plot the fit    
 plt.figure(figsize=(14,16))
-for batch_idx in range(BATCH_SIZE):
-    out_x = sp.squeeze(out[batch_idx,:,0])
-    out_vx = sp.squeeze(out[batch_idx,:,1])
-    noisy_x = batch_x[batch_idx,:,0]
-    noisy_vx = batch_x[batch_idx,:,1]
-    true_x = batch_y[batch_idx,:,0]
-    true_vx = batch_y[batch_idx,:,1]
+
+for batch_idx in range(N_PLOTS):
+    out_xc = sp.squeeze(out[batch_idx,:,0])
+    out_yc = sp.squeeze(out[batch_idx,:,1])
+    out_vxc = sp.squeeze(out[batch_idx,:,2])
+    out_vyc = sp.squeeze(out[batch_idx,:,3])
     
-    plt.subplot(20+(BATCH_SIZE)*100 + batch_idx*2+1)
+    noisy_xc  = batch_x[batch_idx,:,0]
+    noisy_yc  = batch_x[batch_idx,:,1]
+    noisy_vxc = batch_x[batch_idx,:,2]
+    noisy_vyc = batch_x[batch_idx,:,3]
+    
+    true_xc = batch_y[batch_idx,:,0]
+    true_yc = batch_y[batch_idx,:,1]
+    true_vxc = batch_y[batch_idx,:,2]
+    true_vyc = batch_y[batch_idx,:,3]
+    
+    ekf_xc  = sp.squeeze(xk_batch[batch_idx,:,0])
+    ekf_yc  = sp.squeeze(xk_batch[batch_idx,:,1])
+    ekf_vxc = sp.squeeze(xk_batch[batch_idx,:,2])
+    ekf_vyc = sp.squeeze(xk_batch[batch_idx,:,3])
+    
+    
+    
+    plt.subplot(20+(N_PLOTS)*100 + batch_idx*2+1)
     if batch_idx == 0: plt.title('Location x')
-    plt.plot(t,true_x,lw=2,label='true')
-    plt.plot(t,noisy_x,lw=1,label='measured')
-    plt.plot(t,sp.squeeze(xk_batch[batch_idx,:,0]),lw=1,label='Linear KF')
-    plt.plot(t,out_x,lw=1,label='LSTM')
+    plt.plot(true_xc,true_yc,lw=2,label='true')
+    plt.plot(noisy_xc,noisy_yc,lw=1,label='measured')
+    plt.plot(ekf_xc,ekf_yc,lw=1,label='Linear KF')
+    plt.plot(out_xc,out_yc,lw=1,label='LSTM')
     plt.grid(which='both')
     plt.ylabel('x[m]')
     plt.xlabel('time[s]')
     plt.legend()
     
-    plt.subplot(20+(BATCH_SIZE)*100 + batch_idx*2+2)
+    plt.subplot(20+(N_PLOTS)*100 + batch_idx*2+2)
     if batch_idx == 0: plt.title('Velocity x')
-    plt.plot(t,true_vx,lw=2,label='true')
-    plt.plot(t,noisy_vx,lw=1,label='measured')
-    plt.plot(t,sp.squeeze(xk_batch[batch_idx,:,1]),lw=1,label='Linear KF')
-    plt.plot(t,out_vx,lw=1,label='LSTM')
+    #plt.plot(t,true_vxc,lw=2,label='true')
+    #plt.plot(t,noisy_vxc,lw=1,label='measured')
+    #plt.plot(t,ekf_vxc,lw=1,label='Linear KF')
+    #plt.plot(t,out_vxc,lw=1,label='LSTM')
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
     plt.grid(which='both')
     plt.legend()
     
-plt.savefig('1Dexample.png',dpi=200)
+plt.savefig('2Dexample.png',dpi=200)
     
