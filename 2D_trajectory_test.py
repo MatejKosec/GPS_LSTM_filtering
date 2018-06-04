@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 8
+N_HIDDEN = 12
 N_INPUT = 4
 N_ATTN  = 8 #< N_TIME how many previous steps to attend to
 N_PLOTS = 4
@@ -17,7 +17,7 @@ N_OUTPUT = 4
 LR_BASE = 1e-1
 BATCH_SIZE = 12
 ITRS = 800
-REG = 1e-5
+REG = 2e-5
 
 #%% Generate a sample
 t = sp.linspace(0,10,N_TIME)
@@ -36,7 +36,7 @@ def gen_sample(f, vnoise, xnoise):
 
 #%%
 #f1D = [sp.sin,lambda x: sp.cos(x)+1,lambda y: 0.5*y/max(t),lambda z: 0.25*(sp.sin(z)+sp.cos(z)**2)]
-f1D = [lambda x: x/max(t),lambda f: f/max(t), sp.sin, sp.cos]
+f1D = [lambda x: x/max(t),lambda f: -0.7*f/max(t), sp.sin, sp.cos]
 fcouples = permutations(f1D,2)
 y_batch, x_batch = list(zip(*[gen_sample(f, 0.1, 0.2) for f in fcouples]))
 batch_y= sp.stack(y_batch)
@@ -186,6 +186,7 @@ for batch_idx in range(N_PLOTS):
     ekf_vyc = sp.squeeze(xk_batch[batch_idx,:,3])
     
     
+    l2 = lambda x,y: pow(x**2 + y**2,0.5)
     
     plt.subplot(20+(N_PLOTS)*100 + batch_idx*2+1)
     if batch_idx == 0: plt.title('Location x')
@@ -199,11 +200,15 @@ for batch_idx in range(N_PLOTS):
     plt.legend()
     
     plt.subplot(20+(N_PLOTS)*100 + batch_idx*2+2)
-    if batch_idx == 0: plt.title('Velocity x')
+    if batch_idx == 0: plt.title('Velocity Norm')
     #plt.plot(t,true_vxc,lw=2,label='true')
     #plt.plot(t,noisy_vxc,lw=1,label='measured')
     #plt.plot(t,ekf_vxc,lw=1,label='Linear KF')
     #plt.plot(t,out_vxc,lw=1,label='LSTM')
+    plt.plot(t,l2(true_vxc,true_vyc),lw=2,label='true')
+    plt.plot(t,l2(noisy_vxc,noisy_vyc),lw=1,label='measured')
+    plt.plot(t,l2(ekf_vxc,ekf_vyc),lw=1,label='Linear KF')
+    plt.plot(t,l2(out_vxc,out_vyc),lw=1,label='LSTM')
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
     plt.grid(which='both')
