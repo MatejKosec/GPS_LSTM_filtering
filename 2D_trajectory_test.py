@@ -10,13 +10,13 @@ from matplotlib import pyplot as plt
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 17
+N_HIDDEN = 8
 N_INPUT = 4
 N_ATTN  = 8 #< N_TIME how many previous steps to attend to
 N_PLOTS = 4
 N_OUTPUT = 4
-LR_BASE = 1e-1
-BATCH_SIZE = 8
+LR_BASE = 5e-2
+BATCH_SIZE = 38
 ITRS = 800
 REG = 1e-3
 
@@ -37,7 +37,7 @@ def gen_sample(f, vnoise, xnoise):
 
 #%%
 #f1D = [sp.sin,lambda x: sp.cos(x)+1,lambda y: 0.5*y/max(t),lambda z: 0.25*(sp.sin(z)+sp.cos(z)**2)]
-f1D = [lambda x: x/max(t),lambda f: -1.7*f/max(t), sp.sin, sp.cos, sp.tanh]
+f1D = [lambda x: x/max(t),lambda f: -1.7*f/max(t), sp.sin, sp.cos, sp.tanh, lambda z: 0.25*(sp.sin(z)+sp.cos(z)**2), lambda x: -x/max(t)*1.05]
 fcouples = list(permutations(f1D,2))
 random.shuffle(fcouples)
 y_batch, x_batch = list(zip(*[gen_sample(f, 0.1, 0.2) for f in fcouples]))
@@ -60,54 +60,20 @@ with g1.as_default():
     #defining the network as stacked layers of LSTMs
     #lstm_layers =[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
     #lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
-    lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.95)
+    lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.9)
     
-    #Self attention mechanism
-    Wattn = tf.get_variable('attentionWeights', dtype =tf.float32, shape=[N_HIDDEN,N_HIDDEN],\
-                            initializer=tf.contrib.layers.xavier_initializer(), regularizer=lambda x: REG*tf.nn.l2_loss(x))
-    Wcont = tf.get_variable('ContextWeights', dtype =tf.float32, shape=[2*N_HIDDEN,N_HIDDEN],\
-                            initializer=tf.contrib.layers.xavier_initializer(), regularizer=lambda x: REG*tf.nn.l2_loss(x))
-    
-    #Initialize the LSTM
-    state = lstm_cell.zero_state(batch_size, tf.float32)
-    for i in range(N_TIME):
-        #Feed inputs to the lstm
-        output, state = lstm_cell(x[:,i,:], state)
-        #No attention options for first timestep (replicate measurement)
-        if i == 0:
-            outputs = tf.expand_dims(output,axis=1)
-        else:
-            #Transpose the output for processing
-            output = tf.expand_dims(output,axis=1)
-            raw_output = output #save for later
-            
-            #The context window
-            windowed_outputs = outputs[:,max(i-N_ATTN,0):i,:]
-            
-            #Two step context weighing
-            attention_logits = tf.tensordot(output,Wattn,axes=[[2],[0]])
-            attention_logits = tf.transpose(tf.matmul(attention_logits,tf.transpose(windowed_outputs,[0,2,1])),[0,2,1])
-            attention_weights = tf.nn.softmax(attention_logits,axis=1)
-            #Compute the context state
-            context = tf.reduce_sum(attention_weights*windowed_outputs,axis=1,keepdims=True)
-            
-            #Mix context and raw output
-            output  = tf.nn.tanh(tf.tensordot(tf.concat([raw_output,context],axis=2),Wcont,axes=[[2],[0]]))
-            outputs = tf.concat([outputs,output],axis=1)
-            
-            #Set the state  for the LSTM to the attended output
-            state = tf.nn.rnn_cell.LSTMStateTuple(tf.squeeze(output),tf.squeeze(raw_output))
-            
-    print('Unrolled')
-    
-    #Skip connection to original input
-    outputs = tf.concat([outputs,x],axis=2)
-    
+    #Residual weapper
+    lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
+        
+    #UNROLL
+    lstm_inputs = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(x)
+    outputs, state = tf.nn.dynamic_rnn(lstm_cell,lstm_inputs,dtype=tf.float32)
+
     #Output projection layer
-    projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs)
-    predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(projection_layer)
+    projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(outputs)
+    predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(projection_layer)
     #Final output layer
-    predictions = tf.layers.Dense(N_OUTPUT, activation=None,activity_regularizer=lambda x:REG*tf.nn.l2_loss(x))(predictions)
+    predictions = tf.layers.Dense(N_OUTPUT, activation=None,activity_regularizer=lambda z:REG*tf.nn.l2_loss(z))(predictions)
     print('Predictions:', predictions.shape)
     
     #loss_function
@@ -137,12 +103,12 @@ with tf.Session(graph=g1) as sess:
         sess.run(opt, feed_dict={x: train_batch_x, y: train_batch_y, lr:learning_rate, batch_size: train_batch_x.shape[0]})
         
         if itr %20==0:
-            learning_rate *= 0.93
+            learning_rate *= 0.95
             los,out=sess.run([loss,predictions],feed_dict={x:train_batch_x,y: train_batch_y,lr:learning_rate, batch_size: train_batch_x.shape[0]})
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
-            print("Loss ".ljust(10),los)
+            print("Loss ".ljust(12),los)
             los2,out2=sess.run([loss,predictions],feed_dict={x:test_batch_x,y: test_batch_y, batch_size:test_batch_x.shape[0]})
-            print("DEV Loss ".ljust(10),los2)
+            print("DEV Loss ".ljust(12),los2)
             print("_"*80)
 
         itr=itr+1
@@ -175,7 +141,7 @@ for i in range(batch_y.shape[0]):
     
 xk_batch = sp.stack(batch_kalman)
 xk_batch - batch_y
-print('Kalman loss; ', sp.mean(pow(xk_batch - batch_y,2)))
+print('Kalman loss;'.ljust(12), sp.mean(pow(xk_batch[BATCH_SIZE:,:,:] - batch_y[BATCH_SIZE:,:,:],2)))
 print(xk_batch.shape)
 #%% Plot the fit    
 plt.figure(figsize=(14,16))
