@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 8
+N_HIDDEN = 10
 N_INPUT = 4
 N_ATTN  = 8 #< N_TIME how many previous steps to attend to
 N_PLOTS = 4
@@ -18,7 +18,7 @@ N_OUTPUT = 4
 LR_BASE = 5e-2
 BATCH_SIZE = 38
 ITRS = 800
-REG = 1e-3
+REG = 2e-4
 
 #%% Generate a sample
 t = sp.linspace(0,10,N_TIME)
@@ -29,8 +29,11 @@ def gen_sample(f, vnoise, xnoise):
     true_x  = cumtrapz(true_v,t)
     true_x  = sp.hstack([[[0],[0]],true_x])
 
-    noisy_v  = true_v+sp.random.randn(*true_v.shape)*vnoise
-    noisy_x  = true_x+sp.random.randn(*true_x.shape)*xnoise
+    #noisy_v  = true_v+sp.random.randn(*true_v.shape)*vnoise
+    noisy_v  = true_v+(sp.random.rand(*true_v.shape)-0.5)*vnoise
+    #noisy_x  = true_x+sp.random.randn(*true_x.shape)*xnoise
+    noisy_x  = true_x+(sp.random.rand(*true_x.shape)-0.5)*xnoise
+    
     
     
     return sp.vstack([true_x,true_v]).T, sp.vstack([noisy_x,noisy_v]).T
@@ -40,7 +43,7 @@ def gen_sample(f, vnoise, xnoise):
 f1D = [lambda x: x/max(t),lambda f: -1.7*f/max(t), sp.sin, sp.cos, sp.tanh, lambda z: 0.25*(sp.sin(z)+sp.cos(z)**2), lambda x: -x/max(t)*1.05]
 fcouples = list(permutations(f1D,2))
 random.shuffle(fcouples)
-y_batch, x_batch = list(zip(*[gen_sample(f, 0.1, 0.2) for f in fcouples]))
+y_batch, x_batch = list(zip(*[gen_sample(f, 0.05, 0.05) for f in fcouples]))
 batch_y= sp.stack(y_batch)
 batch_x= sp.stack(x_batch)
 print(batch_y.shape,batch_x.shape)
@@ -63,7 +66,7 @@ with g1.as_default():
     lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.9)
     
     #Residual weapper
-    lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
+    #lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
         
     #UNROLL
     lstm_inputs = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(x)
@@ -130,8 +133,8 @@ for i in range(batch_y.shape[0]):
                        [0, 0, 1, 0],\
                        [0, 0, 0, 1]])
     H0     = sp.identity(4)
-    Q0     = sp.diagflat([0.005,0.005,0.0001,0.0001])
-    R0     = sp.diagflat([0.25,0.25,0.001,0.001])
+    Q0     = sp.diagflat([0.0005,0.0005,0.1,0.1])
+    R0     = sp.diagflat([0.07,0.07,0.07,0.07])
 
 
     data = Data(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),sp.squeeze(batch_x[i,:,2]),sp.squeeze(batch_x[i,:,3]),[],[])
@@ -178,6 +181,7 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.plot(ekf_xc,ekf_yc,lw=1,label='Linear KF')
     plt.plot(out_xc,out_yc,lw=1,label='LSTM')
     plt.grid(which='both')
+    plt.gca().equal()
     plt.ylabel('x[m]')
     plt.xlabel('time[s]')
     plt.legend()
