@@ -3,27 +3,28 @@ import functools
 from itertools import permutations
 from tensorflow.contrib.seq2seq import TrainingHelper, BasicDecoder, dynamic_decode,LuongAttention, AttentionWrapper
 import scipy as sp
+import random
 from scipy.integrate import cumtrapz
 from matplotlib import pyplot as plt
 
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 12
+N_HIDDEN = 17
 N_INPUT = 4
 N_ATTN  = 8 #< N_TIME how many previous steps to attend to
 N_PLOTS = 4
 N_OUTPUT = 4
 LR_BASE = 1e-1
-BATCH_SIZE = 12
+BATCH_SIZE = 8
 ITRS = 800
-REG = 2e-5
+REG = 1e-3
 
 #%% Generate a sample
 t = sp.linspace(0,10,N_TIME)
 def gen_sample(f, vnoise, xnoise):
-    true_vy = [f[1](tprime) for tprime in t[:N_TIME//4]]+[0.0]*(N_TIME//4)+[-f[1](tprime) for tprime in t[N_TIME//2:3*N_TIME//4]] +[0.0]*(N_TIME//4)
-    true_vx = [0.0]*(N_TIME//4)+[f[0](tprime) for tprime in t[N_TIME//4:N_TIME//2]] + [0.0]*(N_TIME//4) + [-f[0](tprime) for tprime in t[3*N_TIME//4:]]
+    true_vy = [f[1](tprime) for tprime in t[:N_TIME//4]]+[0.0]*(N_TIME//4)+[-f[1](tprime-t[N_TIME//2]) for tprime in t[N_TIME//2:3*N_TIME//4]] +[0.0]*(N_TIME//4)
+    true_vx = [0.0]*(N_TIME//4)+[-f[0](tprime-t[N_TIME//4]) for tprime in t[N_TIME//4:N_TIME//2]] + [0.0]*(N_TIME//4) + [f[0](tprime-t[3*N_TIME//4]) for tprime in t[3*N_TIME//4:]]
     true_v  = sp.vstack([true_vx,true_vy])
     true_x  = cumtrapz(true_v,t)
     true_x  = sp.hstack([[[0],[0]],true_x])
@@ -36,8 +37,9 @@ def gen_sample(f, vnoise, xnoise):
 
 #%%
 #f1D = [sp.sin,lambda x: sp.cos(x)+1,lambda y: 0.5*y/max(t),lambda z: 0.25*(sp.sin(z)+sp.cos(z)**2)]
-f1D = [lambda x: x/max(t),lambda f: -0.7*f/max(t), sp.sin, sp.cos]
-fcouples = permutations(f1D,2)
+f1D = [lambda x: x/max(t),lambda f: -1.7*f/max(t), sp.sin, sp.cos, sp.tanh]
+fcouples = list(permutations(f1D,2))
+random.shuffle(fcouples)
 y_batch, x_batch = list(zip(*[gen_sample(f, 0.1, 0.2) for f in fcouples]))
 batch_y= sp.stack(y_batch)
 batch_x= sp.stack(x_batch)
@@ -47,9 +49,10 @@ print(batch_y.shape,batch_x.shape)
 g1 = tf.Graph()
 with g1.as_default():
     #input series placeholder
-    x=tf.placeholder(dtype=tf.float32,shape=[BATCH_SIZE,N_TIME,N_INPUT])
+    x=tf.placeholder(dtype=tf.float32,shape=[None,N_TIME,N_INPUT])
     #input label placeholder
-    y=tf.placeholder(dtype=tf.float32,shape=[BATCH_SIZE,N_TIME,N_INPUT])
+    y=tf.placeholder(dtype=tf.float32,shape=[None,N_TIME,N_INPUT])
+    batch_size=tf.placeholder(dtype=tf.int32,shape=())
     lr=tf.placeholder(dtype=tf.float32,shape=())
     
     
@@ -60,12 +63,12 @@ with g1.as_default():
     
     #Self attention mechanism
     Wattn = tf.get_variable('attentionWeights', dtype =tf.float32, shape=[N_HIDDEN,N_HIDDEN],\
-                            initializer=tf.contrib.layers.xavier_initializer())
+                            initializer=tf.contrib.layers.xavier_initializer(), regularizer=lambda x: REG*tf.nn.l2_loss(x))
     Wcont = tf.get_variable('ContextWeights', dtype =tf.float32, shape=[2*N_HIDDEN,N_HIDDEN],\
-                            initializer=tf.contrib.layers.xavier_initializer())
+                            initializer=tf.contrib.layers.xavier_initializer(), regularizer=lambda x: REG*tf.nn.l2_loss(x))
     
     #Initialize the LSTM
-    state = lstm_cell.zero_state(BATCH_SIZE, tf.float32)
+    state = lstm_cell.zero_state(batch_size, tf.float32)
     for i in range(N_TIME):
         #Feed inputs to the lstm
         output, state = lstm_cell(x[:,i,:], state)
@@ -97,7 +100,7 @@ with g1.as_default():
     print('Unrolled')
     
     #Skip connection to original input
-    outputs = tf.concat([outputs,x],axis=2)
+    #outputs = tf.concat([outputs,x],axis=2)
     
     #Output projection layer
     projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs)
@@ -119,27 +122,39 @@ with g1.as_default():
     #Count the trainable parameters 
     shapes = [functools.reduce(lambda x,y: x*y,variable.get_shape()) for variable in tf.trainable_variables()]
     print('Nparams: ', functools.reduce(lambda x,y: x+y, shapes))
-#%%
+#%% TRAINING
+train_batch_x = batch_x[:BATCH_SIZE,:,:]
+train_batch_y = batch_y[:BATCH_SIZE,:,:]
+test_batch_x = batch_x[BATCH_SIZE:,:,:]
+test_batch_y = batch_y[BATCH_SIZE:,:,:]        
 with tf.Session(graph=g1) as sess:
     sess.run(init)
     itr=1
     learning_rate = LR_BASE
     while itr<ITRS:
 
-        sess.run(opt, feed_dict={x: batch_x, y: batch_y, lr:learning_rate})
+        sess.run(opt, feed_dict={x: train_batch_x, y: train_batch_y, lr:learning_rate, batch_size: train_batch_x.shape[0]})
         
         if itr %20==0:
             learning_rate *= 0.93
-            los,out=sess.run([loss,predictions],feed_dict={x:batch_x,y:batch_y,lr:learning_rate})
+            los,out=sess.run([loss,predictions],feed_dict={x:train_batch_x,y: train_batch_y,lr:learning_rate, batch_size: train_batch_x.shape[0]})
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
-            print("Loss ",los)
-            print("__________________")
+            print("Loss ".ljust(10),los)
+            los2,out2=sess.run([loss,predictions],feed_dict={x:test_batch_x,y: test_batch_y, batch_size:test_batch_x.shape[0]})
+            print("DEV Loss ".ljust(10),los2)
+            print("_"*80)
 
         itr=itr+1
+        
+    
+    out  = sp.concatenate([out,out2],axis=0)
+    
+           
+
 #%% Compute the EKF results
 from KalmanFilterClass import LinearKalmanFilter2D, Data
 batch_kalman = []
-for i in range(BATCH_SIZE):
+for i in range(batch_y.shape[0]):
     deltaT = sp.mean(t[1:] - t[0:-1])
     state0 = sp.squeeze(batch_x[i,0,:])
     P0     = sp.identity(4)*0.1
@@ -164,7 +179,7 @@ print(xk_batch.shape)
 #%% Plot the fit    
 plt.figure(figsize=(14,16))
 
-for batch_idx in range(N_PLOTS):
+for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     out_xc = sp.squeeze(out[batch_idx,:,0])
     out_yc = sp.squeeze(out[batch_idx,:,1])
     out_vxc = sp.squeeze(out[batch_idx,:,2])
@@ -188,7 +203,8 @@ for batch_idx in range(N_PLOTS):
     
     l2 = lambda x,y: pow(x**2 + y**2,0.5)
     
-    plt.subplot(20+(N_PLOTS)*100 + batch_idx*2+1)
+    plot_idx = batch_idx-BATCH_SIZE
+    plt.subplot(20+(N_PLOTS)*100 + plot_idx*2+1)
     if batch_idx == 0: plt.title('Location x')
     plt.plot(true_xc,true_yc,lw=2,label='true')
     plt.plot(noisy_xc,noisy_yc,lw=1,label='measured')
@@ -199,7 +215,7 @@ for batch_idx in range(N_PLOTS):
     plt.xlabel('time[s]')
     plt.legend()
     
-    plt.subplot(20+(N_PLOTS)*100 + batch_idx*2+2)
+    plt.subplot(20+(N_PLOTS)*100 + plot_idx*2+2)
     if batch_idx == 0: plt.title('Velocity Norm')
     #plt.plot(t,true_vxc,lw=2,label='true')
     #plt.plot(t,noisy_vxc,lw=1,label='measured')
