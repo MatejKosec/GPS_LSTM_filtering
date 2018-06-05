@@ -52,6 +52,7 @@ with g1.as_default():
     x=tf.placeholder(dtype=tf.float32,shape=[None,N_TIME,N_INPUT])
     #input label placeholder
     y=tf.placeholder(dtype=tf.float32,shape=[None,N_TIME,N_INPUT])
+    #Runtime vars
     batch_size=tf.placeholder(dtype=tf.int32,shape=())
     lr=tf.placeholder(dtype=tf.float32,shape=())
     
@@ -100,7 +101,7 @@ with g1.as_default():
     print('Unrolled')
     
     #Skip connection to original input
-    #outputs = tf.concat([outputs,x],axis=2)
+    outputs = tf.concat([outputs,x],axis=2)
     
     #Output projection layer
     projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda x: REG*tf.nn.l2_loss(x))(outputs)
