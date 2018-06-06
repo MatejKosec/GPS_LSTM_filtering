@@ -1,6 +1,7 @@
 import os
 
 log_files = []
+print('Processing files: ')
 for subdir, dirs, files in os.walk('./'):
     for file in files:
       if file.rfind('gnss_log') != -1:
@@ -13,8 +14,9 @@ for name_file in log_files:
         lines = f.readlines()
     
             
-    fixes = list(filter(lambda l: l.find('Fix') != -1, lines))
-    header = ','.join(fixes.pop(0).split(',')[2:])
+    fixes = list(filter(lambda l: l.rfind('Fix') != -1, lines))
+    print('Found %i fixes.'%len(fixes))
+    header = '# '+','.join(fixes.pop(0).split(',')[2:])
     fixes  = [','.join(fix.split(',')[2:]) for fix in fixes]
     
     with open('gps'+name_file[4:], 'w') as f:
