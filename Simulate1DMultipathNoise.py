@@ -5,6 +5,8 @@ from scipy import stats
 from scipy.integrate import cumtrapz
 from scipy import interpolate
 from matplotlib import pyplot as plt
+pdf  = sp.stats.norm.pdf
+cdf  = sp.stats.norm.cdf
 import functools
 
 #%% Constants
@@ -14,7 +16,7 @@ N_INPUT = 2
 N_ATTN  = 8 #< N_TIME how many previous steps to attend to
 N_PLOTS = 4
 N_OUTPUT = 2
-LR_BASE = 1e-2
+LR_BASE = 5e-3
 BATCH_SIZE = 80
 ITRS = 800
 REG = 1e-3
@@ -28,16 +30,13 @@ XNOISE_SCALE2= [0.9,2.0]
 XNOISE_MU1   = [0.0,0.0]
 XNOISE_MU2   = [4.0,6.0]
 
-
+sp.random.seed(0)
 #%%
 # Create a bimodal gaussian distribution an implemnt a function to sample from it
 class bimodal_gaussian(object):
     
     def __init__(self,loc1,loc2,scale1,scale2,xmin,xmax,npts=100,plot=False):
-        #Import normal distribution
-        pdf = sp.stats.norm.pdf
-        cdf = sp.stats.norm.cdf
-        
+    
         #Sample spacec for plotting and interpolating
         x_eval = sp.linspace(xmin,xmax,npts)
             
@@ -55,7 +54,7 @@ class bimodal_gaussian(object):
             plt.ylim([0,1])
             plt.xlim([xmin,xmax])
             plt.grid(which='both')
-            plt.plot(x_eval,bimodal_pdf, label='pdf')
+            plt.plot(x_eval,bimodal_pdf,'g', label='pdf')
             #plt.plot(x_eval,bimodal_cdf, label='cdf')
             plt.annotate('True location peak', (loc1,max(bimodal_pdf)), (loc1+0.5,0.7),\
                          arrowprops=dict(facecolor='black', shrink=0.005))
@@ -64,13 +63,14 @@ class bimodal_gaussian(object):
             plt.legend()
             plt.ylabel('Probability of location')
             plt.xlabel('Location [m] ')
-            plt.show()
+            plt.savefig('bimodal_distribution_1D_example.png',bbox_inches='tight',dpi=100)
+        
         
         #Make sure the cdf is bounded before interpolating the inverse
         bimodal_cdf[0]=0
         bimodal_cdf[-1]=1
         self.ppf = interpolate.interp1d(bimodal_cdf,x_eval)
-        return
+        return 
         
     #Sample the distribution for any given shape of input array (same as rand function)
     #ppf is an interpolation (approximate)
@@ -168,6 +168,7 @@ with g1.as_default():
     #Runtime vars
     batch_size=tf.placeholder(dtype=tf.int32,shape=())
     lr=tf.placeholder(dtype=tf.float32,shape=())
+    tf.set_random_seed(0)
     
     
     #defining the network as stacked layers of LSTMs
@@ -271,6 +272,10 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     ekf_xc  = sp.squeeze(xk_batch[batch_idx,:,0])
     ekf_vxc = sp.squeeze(xk_batch[batch_idx,:,1])
     
+    x_eval = sp.linspace(-10,10,100)
+    #Create a bimodal pdf
+    bimodal_pdf = pdf(x_eval, loc=loc1, scale=scale1)*0.5 + \
+                  pdf(x_eval, loc=loc2, scale=scale2)*0.5
 
     
     plot_idx = batch_idx-BATCH_SIZE
