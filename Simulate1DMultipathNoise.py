@@ -9,23 +9,23 @@ import functools
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 10
+N_HIDDEN = 12
 N_INPUT = 2
 N_ATTN  = 8 #< N_TIME how many previous steps to attend to
 N_PLOTS = 4
 N_OUTPUT = 2
-LR_BASE = 5e-2
-BATCH_SIZE = 38
+LR_BASE = 1e-2
+BATCH_SIZE = 52
 ITRS = 800
-REG = 2e-4
+REG = 1e-3
 
 #Noise parameters
 VNOISE_MU    = [1.0,5.0]
-VNOISE_SCALE = [0.4,0.9]
-XNOISE_SCALE1= [0.5,1.2]
-XNOISE_SCALE2= [0.5,1.2]
+VNOISE_SCALE = [0.9,1.4]
+XNOISE_SCALE1= [0.9,2.0]
+XNOISE_SCALE2= [0.9,2.0]
 XNOISE_MU1   = [0.0,0.0]
-XNOISE_MU2   = [1.0,1.8]
+XNOISE_MU2   = [3.0,5.0]
 
 
 #%%
@@ -222,16 +222,17 @@ with tf.Session(graph=g1) as sess:
 from KalmanFilterClass import LinearKalmanFilter1D, Data1D
 batch_kalman = []
 deltaT = sp.mean(t[1:] - t[0:-1])
-state0 = sp.array([0, 0]).T
-P0     = sp.identity(2)*0.1
+
+P0     = sp.identity(2)*1.1
 F0     = sp.array([[1, deltaT],\
                    [0, 1]])
 H0     = sp.identity(2)
-Q0     = sp.diagflat([0.005,0.0001])
-R0     = sp.diagflat([0.25,0.001])
+Q0     = sp.diagflat([0.0001,0.0001])
+R0     = sp.diagflat([1.45,1.15])
 
 for i in range(batch_y.shape[0]):
     data = Data1D(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),[])
+    state0 = sp.array([batch_x[i,0,0], batch_x[i,0,1]]).T
     filter1b = LinearKalmanFilter1D(F0, H0, P0, Q0, R0, state0)
     kalman_data = filter1b.process_data(data)
     batch_kalman.append(sp.vstack([kalman_data.x[1:], kalman_data.vx[1:]]).T)
