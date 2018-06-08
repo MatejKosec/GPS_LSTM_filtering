@@ -9,7 +9,7 @@ import functools
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 12
+N_HIDDEN = 30
 N_INPUT = 2
 N_ATTN  = 8 #< N_TIME how many previous steps to attend to
 N_PLOTS = 4
@@ -18,6 +18,7 @@ LR_BASE = 1e-2
 BATCH_SIZE = 52
 ITRS = 800
 REG = 1e-3
+DROPOUT1= 0.02
 
 #Noise parameters
 VNOISE_MU    = [1.0,5.0]
@@ -85,8 +86,7 @@ t = sp.linspace(0,10,N_TIME)
 def gen_sample(v, vnoise_sigma, xnoise_mu1,xnoise_mu2, xnoise_sigma1,xnoise_sigma2):
     true_vx = v*sp.ones_like(t) #Velocity is taken as constant
     #Trapezoidal rule integration of velocity into position
-    true_x  = cumtrapz(true_vx,t) 
-    true_x  = sp.hstack([[0],true_x])
+    true_x  = cumtrapz(true_vx,t,initial=0) 
     
     #Velocity only has Gaussian noise (this might have to be changed)
     noisy_vx = true_vx+sp.random.randn(*t.shape)*vnoise_sigma
@@ -152,14 +152,14 @@ with g1.as_default():
     x=tf.placeholder(dtype=tf.float32,shape=[None,N_TIME,N_INPUT])
     #input label placeholder
     y=tf.placeholder(dtype=tf.float32,shape=[None,N_TIME,N_INPUT])
+    #Dropout needs to know if training
+    is_training = tf.placeholder_with_default(True, shape=())
     #Runtime vars
     batch_size=tf.placeholder(dtype=tf.int32,shape=())
     lr=tf.placeholder(dtype=tf.float32,shape=())
     
     
     #defining the network as stacked layers of LSTMs
-    #lstm_layers =[tf.nn.rnn_cell.LSTMCell(size,forget_bias=0.9) for size in [N_HIDDEN]]
-    #lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
     lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.9)
     
     #Residual weapper
@@ -171,7 +171,9 @@ with g1.as_default():
 
     #Output projection layer
     projection_layer = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(outputs)
+    projection_layer = tf.layers.dropout(projection_layer,rate=DROPOUT1, training=is_training)
     predictions = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(projection_layer)
+    predictions = tf.layers.dropout(predictions,rate=DROPOUT1, training=is_training)
     #Final output layer
     predictions = tf.layers.Dense(N_OUTPUT, activation=None,activity_regularizer=lambda z:REG*tf.nn.l2_loss(z))(predictions)
     print('Predictions:', predictions.shape)
@@ -203,11 +205,12 @@ with tf.Session(graph=g1) as sess:
         sess.run(opt, feed_dict={x: train_batch_x, y: train_batch_y, lr:learning_rate, batch_size: train_batch_x.shape[0]})
         
         if itr %20==0:
-            learning_rate *= 0.95
+            learning_rate *= 0.93
             los,out=sess.run([loss,predictions],feed_dict={x:train_batch_x,y: train_batch_y,lr:learning_rate, batch_size: train_batch_x.shape[0]})
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
             print("Loss ".ljust(12),los)
-            los2,out2=sess.run([loss,predictions],feed_dict={x:test_batch_x,y: test_batch_y, batch_size:test_batch_x.shape[0]})
+            los2,out2=sess.run([loss,predictions],feed_dict={x:test_batch_x,y: test_batch_y, batch_size:test_batch_x.shape[0],\
+                               is_training: False})
             print("DEV Loss ".ljust(12),los2)
             print("_"*80)
 
@@ -232,7 +235,7 @@ R0     = sp.diagflat([1.45,1.15])
 
 for i in range(batch_y.shape[0]):
     data = Data1D(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),[])
-    state0 = sp.array([batch_x[i,0,0], batch_x[i,0,1]]).T
+    state0 = sp.array([0, batch_x[i,0,1]]).T
     filter1b = LinearKalmanFilter1D(F0, H0, P0, Q0, R0, state0)
     kalman_data = filter1b.process_data(data)
     batch_kalman.append(sp.vstack([kalman_data.x[1:], kalman_data.vx[1:]]).T)
