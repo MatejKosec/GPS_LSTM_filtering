@@ -15,7 +15,7 @@ N_ATTN  = 8 #< N_TIME how many previous steps to attend to
 N_PLOTS = 4
 N_OUTPUT = 2
 LR_BASE = 1e-2
-BATCH_SIZE = 52
+BATCH_SIZE = 80
 ITRS = 800
 REG = 1e-3
 DROPOUT1= 0.02
@@ -26,7 +26,7 @@ VNOISE_SCALE = [0.9,1.4]
 XNOISE_SCALE1= [0.9,2.0]
 XNOISE_SCALE2= [0.9,2.0]
 XNOISE_MU1   = [0.0,0.0]
-XNOISE_MU2   = [3.0,5.0]
+XNOISE_MU2   = [4.0,6.0]
 
 
 #%%
@@ -50,14 +50,20 @@ class bimodal_gaussian(object):
         
         #Visualize the distirbution 
         if plot==True:
-            plt.figure(figsize=(8,5))
-            plt.title('Visualization of bimodal distribution')
+            plt.figure(figsize=(9,6))
+            plt.title('Bimodal distribution example')
             plt.ylim([0,1])
             plt.xlim([xmin,xmax])
             plt.grid(which='both')
             plt.plot(x_eval,bimodal_pdf, label='pdf')
-            plt.plot(x_eval,bimodal_cdf, label='cdf')
+            #plt.plot(x_eval,bimodal_cdf, label='cdf')
+            plt.annotate('True location peak', (loc1,max(bimodal_pdf)), (loc1+0.5,0.7),\
+                         arrowprops=dict(facecolor='black', shrink=0.005))
+            plt.annotate('Multipath location peak', (loc2,0.4), (loc2+0.3,0.5),\
+                         arrowprops=dict(facecolor='black', shrink=0.005))
             plt.legend()
+            plt.ylabel('Probability of location')
+            plt.xlabel('Location [m] ')
             plt.show()
         
         #Make sure the cdf is bounded before interpolating the inverse
@@ -92,7 +98,7 @@ def gen_sample(v, vnoise_sigma, xnoise_mu1,xnoise_mu2, xnoise_sigma1,xnoise_sigm
     noisy_vx = true_vx+sp.random.randn(*t.shape)*vnoise_sigma
     
     #Position has bimodal noise
-    noise_dist = bimodal_gaussian(xnoise_mu1,xnoise_mu2,xnoise_sigma1,xnoise_sigma2,-5,5,100)
+    noise_dist = bimodal_gaussian(xnoise_mu1,xnoise_mu2,xnoise_sigma1,xnoise_sigma2,-10,10,150)
     noisy_x  = true_x+noise_dist.sample(*t.shape)
     
     return sp.stack([true_x,true_vx]).T, sp.stack([noisy_x,noisy_vx]).T
@@ -103,7 +109,12 @@ N_SAMPLES  = BATCH_SIZE+N_PLOTS
 vnoise_mu    = (VNOISE_MU[1]-VNOISE_MU[0])*sp.random.rand(N_SAMPLES) + VNOISE_MU[0]
 vnoise_sigma = (VNOISE_SCALE[1]-VNOISE_SCALE[0])*sp.random.rand(N_SAMPLES)+VNOISE_SCALE[0]
 xnoise_mu1   = (XNOISE_MU1[1]-XNOISE_MU1[0])*sp.random.rand(N_SAMPLES) + XNOISE_MU1[0]
-xnoise_mu2   = (XNOISE_MU2[1]-XNOISE_MU2[0])*sp.random.rand(N_SAMPLES) + XNOISE_MU2[0]
+left_right = 2*((sp.random.rand(N_SAMPLES)>0.5)-0.5)
+left_right[-1] = 1
+left_right[-2] = -1
+left_right[-3] = 1
+left_right[-4] = -1
+xnoise_mu2   = left_right*((XNOISE_MU2[1]-XNOISE_MU2[0])*sp.random.rand(N_SAMPLES) + XNOISE_MU2[0])
 xnoise_scale1 = (XNOISE_SCALE1[1]-XNOISE_SCALE1[0])*sp.random.rand(N_SAMPLES) + XNOISE_SCALE1[0]
 xnoise_scale2 = (XNOISE_SCALE2[1]-XNOISE_SCALE2[0])*sp.random.rand(N_SAMPLES) + XNOISE_SCALE2[0]
 
@@ -226,7 +237,7 @@ from KalmanFilterClass import LinearKalmanFilter1D, Data1D
 batch_kalman = []
 deltaT = sp.mean(t[1:] - t[0:-1])
 
-P0     = sp.identity(2)*1.1
+P0     = sp.identity(2)*1
 F0     = sp.array([[1, deltaT],\
                    [0, 1]])
 H0     = sp.identity(2)
