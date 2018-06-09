@@ -192,6 +192,7 @@ with g1.as_default():
     
     #loss_function
     loss= tf.reduce_mean((y-predictions)**2)
+    test_loss_summary = tf.reduce_mean((y-predictions)**2,axis=[1])
     #optimization
     opt=tf.train.AdamOptimizer(learning_rate=lr).minimize(loss)
     print('Compiled loss and trainer')
@@ -211,6 +212,7 @@ test_batch_y = batch_y[BATCH_SIZE:,:,:]
 #Save losses for plotting of progress
 dev_loss_plot = []
 tra_loss_plot = []
+lr_plot = []
 
 with tf.Session(graph=g1) as sess:
     sess.run(init)
@@ -219,6 +221,7 @@ with tf.Session(graph=g1) as sess:
     while itr<ITRS:
 
         sess.run(opt, feed_dict={x: train_batch_x, y: train_batch_y, lr:learning_rate, batch_size: train_batch_x.shape[0]})
+        lr_plot.append(learning_rate)
         
         if itr %20==0:
             learning_rate *= 0.93
@@ -233,7 +236,8 @@ with tf.Session(graph=g1) as sess:
             print("_"*80)
 
         itr=itr+1
-        
+    dev_losses = sess.run([test_loss_summary],feed_dict={x:test_batch_x,y: test_batch_y, batch_size:test_batch_x.shape[0],\
+                               is_training: False})[0]
     
     out  = sp.concatenate([out,out2],axis=0)
     
@@ -256,12 +260,12 @@ from KalmanFilterClass import LinearKalmanFilter1D, Data1D
 batch_kalman = []
 deltaT = sp.mean(t[1:] - t[0:-1])
 
-P0     = sp.identity(2)*1
+P0     = sp.identity(2)*0.01
 F0     = sp.array([[1, deltaT],\
                    [0, 1]])
 H0     = sp.identity(2)
-Q0     = sp.diagflat([0.0001,0.0001])
-R0     = sp.diagflat([1.45,1.15])
+Q0     = sp.diagflat([0.0001,0.00001])
+R0     = sp.diagflat([1.5,0.01])
 
 for i in range(batch_y.shape[0]):
     data = Data1D(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),[])
@@ -299,11 +303,17 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     bimodal_pdf = pdf(x_eval, loc=loc1, scale=scale1)*0.5 + \
                   pdf(x_eval, loc=loc2, scale=scale2)*0.5
 
+    #Grab the LSTM and kalman losses for annotating 
+    lstm_loss = dev_losses[batch_idx-BATCH_SIZE]
+    kalman_loss = sp.mean(pow(xk_batch[batch_idx-BATCH_SIZE,:,:] - batch_y[batch_idx-BATCH_SIZE,:,:],2),axis=0)
     
     plot_idx = batch_idx-BATCH_SIZE
     plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+1)
     if batch_idx == BATCH_SIZE: plt.title('Position filtering')
     plt.plot(t,true_xc,lw=2,label='true')
+    plt.text(5,0,'LSTM loss:    %3.2f \nKalman loss: %3.2f'%(lstm_loss[0],kalman_loss[0]),
+                                                            fontsize=12,color='white',\
+                                                            bbox=dict(facecolor='green', alpha=0.8))
     plt.plot(t,noisy_xc,lw=1,label='measured')
     plt.plot(t,ekf_xc,lw=1,label='Linear KF')
     plt.plot(t,out_xc,lw=1,label='LSTM')
@@ -319,6 +329,9 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.plot(t,noisy_vxc,lw=1,label='measured')
     plt.plot(t,ekf_vxc,lw=1,label='Linear KF')
     plt.plot(t,out_vxc,lw=1,label='LSTM')
+    plt.text(5,0,'LSTM loss:    %3.2f\nKalman loss: %3.2f'%(lstm_loss[1],kalman_loss[1]),
+                                                            fontsize=12,color='white',\
+                                                            bbox=dict(facecolor='green', alpha=0.8))
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
     plt.grid(which='both')
@@ -337,6 +350,7 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
                  arrowprops=dict(facecolor='black', shrink=0.005))
     plt.annotate('Multipath location peak', (loc2,peak2), (6-side*6,peak2*0.5),\
                  arrowprops=dict(facecolor='black', shrink=0.005))
+    plt.xlabel(r'$\Delta$ position x [m]')
     plt.legend()
     
     
