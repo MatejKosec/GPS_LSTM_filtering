@@ -19,7 +19,7 @@ N_OUTPUT = 2
 LR_BASE = 5e-3
 BATCH_SIZE = 80
 ITRS = 800
-REG = 1e-3
+REG = 1.1e-3
 DROPOUT1= 0.02
 
 #Noise parameters
@@ -208,6 +208,10 @@ train_batch_x = batch_x[:BATCH_SIZE,:,:]
 train_batch_y = batch_y[:BATCH_SIZE,:,:]
 test_batch_x = batch_x[BATCH_SIZE:,:,:]
 test_batch_y = batch_y[BATCH_SIZE:,:,:]        
+#Save losses for plotting of progress
+dev_loss_plot = []
+tra_loss_plot = []
+
 with tf.Session(graph=g1) as sess:
     sess.run(init)
     itr=1
@@ -218,11 +222,13 @@ with tf.Session(graph=g1) as sess:
         
         if itr %20==0:
             learning_rate *= 0.93
-            los,out=sess.run([loss,predictions],feed_dict={x:train_batch_x,y: train_batch_y,lr:learning_rate, batch_size: train_batch_x.shape[0]})
+            los,out=sess.run([loss,predictions],feed_dict={x:train_batch_x,y: train_batch_y,lr:learning_rate, batch_size: train_batch_x.shape[0],is_training: False})
+            tra_loss_plot.append(los)
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
             print("Loss ".ljust(12),los)
             los2,out2=sess.run([loss,predictions],feed_dict={x:test_batch_x,y: test_batch_y, batch_size:test_batch_x.shape[0],\
                                is_training: False})
+            dev_loss_plot.append(los2)
             print("DEV Loss ".ljust(12),los2)
             print("_"*80)
 
@@ -231,7 +237,19 @@ with tf.Session(graph=g1) as sess:
     
     out  = sp.concatenate([out,out2],axis=0)
     
-    
+#%%
+plt.figure(figsize=(7,4))
+plt.title('Training progress log-log plot')
+plt.gca().set_yscale('log')
+plt.plot(range(len(dev_loss_plot)),dev_loss_plot,label='dev loss')
+plt.plot(range(len(tra_loss_plot)),tra_loss_plot,label='train loss')
+plt.xlabel('Adam iteration')
+plt.ylabel('L2 fitting loss')
+plt.grid(which='both')
+plt.legend()
+plt.savefig('training_progress1D.png',bbox_inches='tight', dpi=200)
+
+
 
 #%% Compute the EKF results
 from KalmanFilterClass import LinearKalmanFilter1D, Data1D
@@ -258,7 +276,7 @@ print('Kalman loss;'.ljust(12), sp.mean(pow(xk_batch[BATCH_SIZE:,:,:] - batch_y[
 print(xk_batch.shape)
 #%% Plot the fit    
 plt.figure(figsize=(14,16))
-
+N_PLOTS = 2
 for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     out_xc = sp.squeeze(out[batch_idx,:,0])
     out_vxc = sp.squeeze(out[batch_idx,:,1])
@@ -274,13 +292,17 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     
     x_eval = sp.linspace(-10,10,100)
     #Create a bimodal pdf
+    loc1 = xnoise_mu1[batch_idx]
+    loc2 = xnoise_mu2[batch_idx]
+    scale1 = xnoise_scale1[batch_idx]
+    scale2 = xnoise_scale2[batch_idx]
     bimodal_pdf = pdf(x_eval, loc=loc1, scale=scale1)*0.5 + \
                   pdf(x_eval, loc=loc2, scale=scale2)*0.5
 
     
     plot_idx = batch_idx-BATCH_SIZE
-    plt.subplot(20+(N_PLOTS)*100 + plot_idx*2+1)
-    if batch_idx == 0: plt.title('Location x')
+    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+1)
+    if batch_idx == BATCH_SIZE: plt.title('Position filtering')
     plt.plot(t,true_xc,lw=2,label='true')
     plt.plot(t,noisy_xc,lw=1,label='measured')
     plt.plot(t,ekf_xc,lw=1,label='Linear KF')
@@ -291,8 +313,8 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.xlabel('time[s]')
     plt.legend()
     
-    plt.subplot(20+(N_PLOTS)*100 + plot_idx*2+2)
-    if batch_idx == 0: plt.title('Velocity Norm')
+    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+2)
+    if batch_idx == BATCH_SIZE: plt.title('Velocity filtering')
     plt.plot(t,true_vxc,lw=2,label='true')
     plt.plot(t,noisy_vxc,lw=1,label='measured')
     plt.plot(t,ekf_vxc,lw=1,label='Linear KF')
@@ -301,6 +323,22 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.xlabel('time[s]')
     plt.grid(which='both')
     plt.legend()
+    
+    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+3)
+    if batch_idx == BATCH_SIZE: plt.title('Noise distribution used')
+    plt.grid(which='both')
+    plt.plot(x_eval,bimodal_pdf,'g', label='pdf')
+    plt.fill_between(x_eval,bimodal_pdf,0,color='g',alpha=0.4)
+    plt.ylim([0,0.2])
+    peak1 = 0.5/(pow(2*sp.pi,0.5)*scale1)
+    peak2 = 0.5/(pow(2*sp.pi,0.5)*scale2)
+    side = left_right[batch_idx]
+    plt.annotate('True location peak', (loc1,peak1), (-6+side*6,peak1*0.5), \
+                 arrowprops=dict(facecolor='black', shrink=0.005))
+    plt.annotate('Multipath location peak', (loc2,peak2), (6-side*6,peak2*0.5),\
+                 arrowprops=dict(facecolor='black', shrink=0.005))
+    plt.legend()
+    
     
 plt.savefig('1D_bimodal_results_example.png',dpi=200)
     
