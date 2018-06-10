@@ -13,7 +13,6 @@ import functools
 N_TIME = 100
 N_HIDDEN = 30
 N_INPUT = 2
-N_ATTN  = 8 #< N_TIME how many previous steps to attend to
 N_PLOTS = 4
 N_OUTPUT = 2
 LR_BASE = 5e-3
@@ -63,7 +62,7 @@ class bimodal_gaussian(object):
             
             plt.ylabel('Probability of location')
             plt.xlabel('Location [m] ')
-            plt.savefig('bimodal_distribution_1D_example.png',bbox_inches='tight',dpi=100)
+            plt.savefig('bimodal_distribution_example_1D.png',bbox_inches='tight',dpi=100)
         
         
         #Make sure the cdf is bounded before interpolating the inverse
@@ -154,7 +153,7 @@ if False:
         plt.grid(which='both')
         plt.legend()
         
-    plt.savefig('1D_bimodal_example.png',dpi=200)
+    plt.savefig('bimodal_example_data_1D.png',dpi=200)
 
 #%%
 g1 = tf.Graph()
@@ -362,6 +361,4 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.xlabel(r'$\Delta$ position x [m]')
     plt.legend()
     
-    
-plt.savefig('1D_bimodal_results_example.png',dpi=200)
-    
+plt.savefig('bimodal_results_example1D.png',dpi=200)
