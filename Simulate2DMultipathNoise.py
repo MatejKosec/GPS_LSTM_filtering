@@ -72,6 +72,7 @@ class bimodal_gaussian_2D(object):
     #Sample the distribution for any given shape of input array (same as rand function)
     #ppf is an interpolation (approximate)
     def sample(self, *shape):
+        bimodal_partial_cdf= cumtrapz(self.bimodal_pdf,initial=0,axis=0)
         #First sample in the x coordinate
         samplesx  = self.ppfx(sp.random.rand(*shape))
         #Next sample in the ybin
@@ -82,11 +83,11 @@ class bimodal_gaussian_2D(object):
             upper_index = sp.int32(sp.ceil(binindex))
             lower_index = sp.int32(sp.floor(binindex))
             
-            ppy_lower = interpolate.interp1d(bimodal_cdf[:,lower_index],self.y_eval_space)
-            ppy_upper = interpolate.interp1d(bimodal_cdf[:,upper_index],self.y_eval_space)
+            ppy_upper = interpolate.interp1d(bimodal_partial_cdf[:,upper_index],self.y_eval_space)
+            ppy_lower = interpolate.interp1d(bimodal_partial_cdf[:,lower_index],self.y_eval_space)
             
-            a = bimodal_cdf[:,upper_index]
-            b = bimodal_cdf[:,lower_index]
+            a = bimodal_partial_cdf[:,upper_index]
+            b = bimodal_partial_cdf[:,lower_index]
             
             samples_upper = ppy_upper(ysample*(max(a)-min(a)) + min(a))
             samples_lower = ppy_lower(ysample*(max(b)-min(b)) + min(b))
