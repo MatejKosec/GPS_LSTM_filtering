@@ -22,10 +22,8 @@ REG = 1.1e-3
 DROPOUT1= 0.02
 
 #Noise parameters
-VXNOISE_MU    = [1.0,5.0]
-VXNOISE_SCALE = [0.9,1.4]
-VYNOISE_MU    = [1.0,5.0]
-VYNOISE_SCALE = [0.9,1.4]
+VNOISE_MU    = [1.0,5.0]
+VNOISE_SCALE = [0.9,1.4]
 XNOISE_SCALE1= [0.9,2.0]
 XNOISE_SCALE2= [0.9,2.0]
 XNOISE_MU1   = [0.0,0.0]
@@ -42,38 +40,30 @@ class bimodal_gaussian_2D(object):
         #Sample spacec for plotting and interpolating
         x_eval = sp.linspace(xmin,xmax,npts)
         y_eval = sp.linspace(xmin,xmax,npts)
-        x_eval,y_eval = sp.meshgrid([x_eval,y_eval])
-            
+        if plot: print('Done with linspace')
+        x_eval,y_eval = sp.meshgrid(x_eval,y_eval)
+        xy_eval = sp.dstack((x_eval,y_eval))
+        if plot: print('Done with dstack')
         #Create a bimodal pdf
-        bimodal_pdf = pdf(x_eval, loc=loc1, scale=scale1)*0.5 + \
-                      pdf(x_eval, loc=loc2, scale=scale2)*0.5
-                      
-        bimodal_cdf = cdf(x_eval, loc=loc1, scale=scale1)*0.5 + \
-                      cdf(x_eval, loc=loc2, scale=scale2)*0.5
-        
-        #Visualize the distirbution 
-        if plot==True:
-            plt.figure(figsize=(9,6))
-            plt.title('Bimodal distribution example')
-            plt.ylim([0,1])
-            plt.xlim([xmin,xmax])
-            plt.grid(which='both')
-            plt.plot(x_eval,bimodal_pdf,'g', label='pdf')
-            #plt.plot(x_eval,bimodal_cdf, label='cdf')
-            plt.annotate('True location peak', (loc1,max(bimodal_pdf)), (loc1+0.5,0.7),\
-                         arrowprops=dict(facecolor='black', shrink=0.005))
-            plt.annotate('Multipath location peak', (loc2,0.4), (loc2+0.3,0.5),\
-                         arrowprops=dict(facecolor='black', shrink=0.005))
-            
-            plt.ylabel('Probability of location')
-            plt.xlabel('Location [m] ')
-            plt.savefig('bimodal_distribution_example_1D.png',bbox_inches='tight',dpi=100)
+        bimodal_pdf = pdf(xy_eval, mean=loc1, cov=scale1)*0.5 + \
+                      pdf(xy_eval, mean=loc2, cov=scale2)*0.5
+        if plot: print('Done with pdf')
+        bimodal_cdf = cdf(xy_eval, mean=loc1, cov=scale1)*0.5 + \
+                      cdf(xy_eval, mean=loc2, cov=scale2)*0.5
+        if plot: print('Done with cdf')
         
         
         #Make sure the cdf is bounded before interpolating the inverse
-        bimodal_cdf[0]=0
-        bimodal_cdf[-1]=1
-        self.ppf = interpolate.interp1d(bimodal_cdf,x_eval)
+        bimodal_cdf[:,0]=0
+        bimodal_cdf[:,-1]=1
+        self.ppf = interpolate.interp2d(x_eval,y_eval,bimodal_cdf,kind='linear')
+        if plot: print('Done building interpolator')
+        
+        #Store the data
+        self.x_eval = x_eval
+        self.y_eval = y_eval
+        self.bimodal_pdf = bimodal_pdf
+        self.bimodal_cdf = bimodal_cdf
         return 
         
     #Sample the distribution for any given shape of input array (same as rand function)
@@ -83,13 +73,33 @@ class bimodal_gaussian_2D(object):
         samples = self.ppf(samples)
         return samples
     
+
+    
 #Example of distribution
 if __name__ == "__main__":        
-    loc1 = 0.0
-    scale1 = 0.3
-    loc2 = 2
-    scale2 = 0.5
-    noise_dist = bimodal_gaussian(loc1,loc2,scale1,scale2,-5,5,100,plot=True)
+    loc1 = [0.0,0.0]
+    scale1 = [0.5,0.3]
+    loc2 = [2,3]
+    scale2 = [0.7,0.4]
+    noise_dist = bimodal_gaussian_2D(loc1,loc2,scale1,scale2,-5,5,80,plot=True)
+#%%
+if __name__ == "__main__":        
+    x_eval = noise_dist.x_eval
+    y_eval = noise_dist.y_eval
+    bimodal_pdf = noise_dist.bimodal_pdf
+    bimodal_cdf = noise_dist.bimodal_cdf
+    plt.figure(figsize=(9,6))
+    plt.title('2D Bimodal distribution example')
+    plt.contour(x_eval,y_eval, bimodal_pdf,10)
+    plt.annotate('True location peak', loc1, [i-1.6 for i in loc1],\
+                 arrowprops=dict(facecolor='black', shrink=0.005))
+    plt.annotate('Multipath location peak', loc2, [i-1.6 for i in loc2],\
+                 arrowprops=dict(facecolor='black', shrink=0.005))
+    plt.grid(which='both')
+    plt.ylabel('$\Delta$ y [m] ')
+    plt.xlabel('$\Delta$ x [m] ')
+    plt.colorbar()
+    #plt.savefig('bimodal_distribution_example_2D.png',bbox_inches='tight',dpi=100)
 
 #%% Generate true labels and noisy data for a given time-frame
 t = sp.linspace(0,10,N_TIME)
