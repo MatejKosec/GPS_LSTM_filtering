@@ -60,7 +60,7 @@ class bimodal_gaussian(object):
                          arrowprops=dict(facecolor='black', shrink=0.005))
             plt.annotate('Multipath location peak', (loc2,0.4), (loc2+0.3,0.5),\
                          arrowprops=dict(facecolor='black', shrink=0.005))
-            plt.legend()
+            
             plt.ylabel('Probability of location')
             plt.xlabel('Location [m] ')
             plt.savefig('bimodal_distribution_1D_example.png',bbox_inches='tight',dpi=100)
@@ -216,7 +216,7 @@ lr_plot = []
 
 with tf.Session(graph=g1) as sess:
     sess.run(init)
-    itr=1
+    itr=0
     learning_rate = LR_BASE
     while itr<ITRS:
 
@@ -242,11 +242,20 @@ with tf.Session(graph=g1) as sess:
     out  = sp.concatenate([out,out2],axis=0)
     
 #%%
-plt.figure(figsize=(7,4))
-plt.title('Training progress log-log plot')
+plt.figure(figsize=(14,4))
+plt.subplot(121)
+plt.title('Training progress ylog plot')
 plt.gca().set_yscale('log')
-plt.plot(range(len(dev_loss_plot)),dev_loss_plot,label='dev loss')
-plt.plot(range(len(tra_loss_plot)),tra_loss_plot,label='train loss')
+plt.plot(range(0,ITRS,20),dev_loss_plot,label='dev loss')
+plt.plot(range(0,ITRS,20),tra_loss_plot,label='train loss')
+plt.xlabel('Adam iteration')
+plt.ylabel('L2 fitting loss')
+plt.grid(which='both')
+plt.legend()
+plt.subplot(122)
+plt.title('Learning rate')
+#plt.gca().set_yscale('log')
+plt.plot(range(len(lr_plot)),lr_plot,label='Exponentially decayed to 93% every 20 iterations')
 plt.xlabel('Adam iteration')
 plt.ylabel('L2 fitting loss')
 plt.grid(which='both')
@@ -310,11 +319,11 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plot_idx = batch_idx-BATCH_SIZE
     plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+1)
     if batch_idx == BATCH_SIZE: plt.title('Position filtering')
-    plt.plot(t,true_xc,lw=2,label='true')
+    plt.plot(t,true_xc,lw=2,label='True')
     plt.text(5,0,'LSTM loss:    %3.2f \nKalman loss: %3.2f'%(lstm_loss[0],kalman_loss[0]),
                                                             fontsize=12,color='white',\
                                                             bbox=dict(facecolor='green', alpha=0.8))
-    plt.plot(t,noisy_xc,lw=1,label='measured')
+    plt.plot(t,noisy_xc,lw=1,label='Measured')
     plt.plot(t,ekf_xc,lw=1,label='Linear KF')
     plt.plot(t,out_xc,lw=1,label='LSTM')
     plt.grid(which='both')
@@ -324,9 +333,9 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.legend()
     
     plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+2)
-    if batch_idx == BATCH_SIZE: plt.title('Velocity filtering')
-    plt.plot(t,true_vxc,lw=2,label='true')
-    plt.plot(t,noisy_vxc,lw=1,label='measured')
+    if batch_idx == BATCH_SIZE: plt.title('Velocity filtering (Gaussian noise)')
+    plt.plot(t,true_vxc,lw=2,label='True')
+    plt.plot(t,noisy_vxc,lw=1,label='Measured')
     plt.plot(t,ekf_vxc,lw=1,label='Linear KF')
     plt.plot(t,out_vxc,lw=1,label='LSTM')
     plt.text(5,0,'LSTM loss:    %3.2f\nKalman loss: %3.2f'%(lstm_loss[1],kalman_loss[1]),
@@ -338,7 +347,7 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.legend()
     
     plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+3)
-    if batch_idx == BATCH_SIZE: plt.title('Noise distribution used')
+    if batch_idx == BATCH_SIZE: plt.title('Position noise distribution')
     plt.grid(which='both')
     plt.plot(x_eval,bimodal_pdf,'g', label='pdf')
     plt.fill_between(x_eval,bimodal_pdf,0,color='g',alpha=0.4)
@@ -346,9 +355,9 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     peak1 = 0.5/(pow(2*sp.pi,0.5)*scale1)
     peak2 = 0.5/(pow(2*sp.pi,0.5)*scale2)
     side = left_right[batch_idx]
-    plt.annotate('True location peak', (loc1,peak1), (-6+side*6,peak1*0.5), \
+    plt.annotate('True peak', (loc1,peak1), (-5+side*5,peak1*1.2), \
                  arrowprops=dict(facecolor='black', shrink=0.005))
-    plt.annotate('Multipath location peak', (loc2,peak2), (6-side*6,peak2*0.5),\
+    plt.annotate('Multipath peak', (loc2,peak2), (1+side*1,peak2*0.7),\
                  arrowprops=dict(facecolor='black', shrink=0.005))
     plt.xlabel(r'$\Delta$ position x [m]')
     plt.legend()
