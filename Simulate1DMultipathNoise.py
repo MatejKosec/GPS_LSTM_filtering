@@ -15,14 +15,14 @@ N_HIDDEN = 30
 N_INPUT = 2
 N_PLOTS = 10
 N_OUTPUT = 2
-LR_BASE = 1e-4
-BATCH_SIZE = 180
+LR_BASE = 1e-3
+BATCH_SIZE = 200
 ITRS = 800
 REG = 1.5e-2
-DROPOUT1= 0.02
-DROPOUT2= 0.00
-DECAY  = 0.93
-MINI_SIZE = 64
+DROPOUT1= 0.10
+DROPOUT2= 0.02
+DECAY  = 0.95
+MINI_SIZE = BATCH_SIZE
 
 #Noise parameters
 VNOISE_MU    = [1.0,5.0]
@@ -32,7 +32,7 @@ XNOISE_SCALE2= [0.9,2.0]
 XNOISE_MU1   = [0.0,0.0]
 XNOISE_MU2   = [4.0,6.0]
 
-sp.random.seed(0)
+sp.random.seed(1)
 #%%
 # Create a bimodal gaussian distribution an implemnt a function to sample from it
 class bimodal_gaussian(object):
@@ -180,8 +180,8 @@ with g1.as_default():
     #lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
     
     #Dropout wrapper
-    lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, input_keep_prob=tf.maximum(1-DROPOUT2,1-tf.cast(is_training,tf.float32)),\
-                                              output_keep_prob=tf.maximum(1-DROPOUT2,1-tf.cast(is_training,tf.float32)))
+    #lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, input_keep_prob=tf.maximum(1-DROPOUT2,1-tf.cast(is_training,tf.float32)),\
+    #                                          output_keep_prob=tf.maximum(1-DROPOUT2,1-tf.cast(is_training,tf.float32)))
         
     #UNROLL
     lstm_inputs = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(x)
@@ -198,7 +198,11 @@ with g1.as_default():
     
     #loss_function
     loss= tf.reduce_mean((y-predictions)**2)
+    summary = tf.summary.scalar('loss', loss)
+    #Summaries
     test_loss_summary = tf.reduce_mean((y-predictions)**2,axis=[1])
+    merged = tf.summary.merge_all()
+
     #optimization
     opt=tf.train.AdamOptimizer(learning_rate=lr).minimize(loss)
     print('Compiled loss and trainer')
@@ -220,18 +224,23 @@ dev_loss_plot = []
 tra_loss_plot = []
 lr_plot = []
 
+
 with tf.Session(graph=g1) as sess:
+    writer = tf.summary.FileWriter('./summary',sess.graph)
     sess.run(init)
     itr=0
     learning_rate = LR_BASE
     while itr<ITRS:
 
         #Do somme minibatching
+        
         mini_size = MINI_SIZE
         for i in range(0,train_batch_x.shape[0],mini_size):
             start = i
             end   = min(i+mini_size,train_batch_x.shape[0])
             sess.run(opt, feed_dict={x: train_batch_x[start:end], y: train_batch_y[start:end], lr:learning_rate, batch_size: start-end})
+        
+        #sess.run(opt, feed_dict={x: train_batch_x, y: train_batch_y, lr:learning_rate, batch_size: train_batch_x.shape[0]})
         lr_plot.append(learning_rate)
         
         if itr %20==0:
@@ -240,10 +249,11 @@ with tf.Session(graph=g1) as sess:
             tra_loss_plot.append(los)
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
             print("Loss ".ljust(12),los)
-            los2,out2=sess.run([loss,predictions],feed_dict={x:test_batch_x,y: test_batch_y, batch_size:test_batch_x.shape[0],\
+            summary,los2,out2=sess.run([merged,loss,predictions],feed_dict={x:test_batch_x,y: test_batch_y, batch_size:test_batch_x.shape[0],\
                                is_training: False})
             dev_loss_plot.append(los2)
             print("DEV Loss ".ljust(12),los2)
+            writer.add_summary(summary, itr)
             print("_"*80)
 
         itr=itr+1
