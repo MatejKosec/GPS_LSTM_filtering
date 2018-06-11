@@ -24,11 +24,14 @@ N_PLOTS = 25
 N_OUTPUT = 6
 LR_BASE = 2e-3
 BATCH_SIZE = 15
-ITRS = 600
+ITRS = 100
 REG = 1.5e-1
 DROPOUT1= 0.10
 DROPOUT2= 0.10
 DECAY = 0.95
+RESTORE_CHECKPOINT  = True
+PERFORM_TRAINING = True
+SAVE_DIR = './checkpoints'
 
 def read_file(file_name):
 	data_file = open(file_name,"r")
@@ -110,8 +113,10 @@ with g1.as_default():
     #Count the trainable parameters 
     shapes = [functools.reduce(lambda x,y: x*y,variable.get_shape()) for variable in tf.trainable_variables()]
     print('Nparams: ', functools.reduce(lambda x,y: x+y, shapes))
+    saver = tf.train.Saver()
 #%% TRAINING
 data = []
+#Add saver
 for i in range(8):
 	file_name = 'Oval_circ1_N'+str(i+1)+'.txt'
 	data.append(read_file(file_name))
@@ -133,10 +138,13 @@ tra_loss_plot = []
 lr_plot = []
 
 with tf.Session(graph=g1) as sess:
-    sess.run(init)
+    if RESTORE_CHECKPOINT:
+          saver.restore(sess, SAVE_DIR+"/model.ckpt")
+    else:
+        sess.run(init)
     itr=0
     learning_rate = LR_BASE
-    while itr<ITRS:
+    while itr<ITRS and PERFORM_TRAINING:
         
         #Do somme minibatching
         mini_size = 32
@@ -156,7 +164,11 @@ with tf.Session(graph=g1) as sess:
                                is_training: False})
             dev_loss_plot.append(los2)
             print("DEV Loss ".ljust(12),los2)
+            if itr %100==0:
+                save_path = saver.save(sess, SAVE_DIR+"/model.ckpt")
+                print("Model saved in path: %s" % save_path)
             print("_"*80)
+        
 
         itr=itr+1
     dev_losses = sess.run([test_loss_summary],feed_dict={x:test_batch_x,y: test_batch_y, batch_size:test_batch_x.shape[0],\
@@ -166,7 +178,7 @@ with tf.Session(graph=g1) as sess:
     
     #%%
 plt.figure(figsize=(14,4))
-plt.subplot(121)
+plt.subplot(221)
 plt.title('Training progress ylog plot')
 plt.gca().set_yscale('log')
 plt.plot(range(0,ITRS,20),dev_loss_plot,label='dev loss')
@@ -175,8 +187,28 @@ plt.xlabel('Adam iteration')
 plt.ylabel('L2 fitting loss')
 plt.grid(which='both')
 plt.legend()
-plt.subplot(122)
+plt.subplot(222)
 plt.title('Learning rate')
+
+plt.plot(out2[0,:,0],out2[0,:,1],label='Test path output')
+plt.plot(test_batch_x[0,:,0],test_batch_x[0,:,1],label='Input path')
+plt.plot(test_batch_y[0,:,0],test_batch_y[0,:,1],label='True path')
+plt.xlabel('x axis')
+plt.ylabel('y axis')
+plt.grid(which='both')
+plt.legend()
+plt.subplot(223)
+plt.title('Position')
+
+plt.plot(out2[0,:,3],out2[0,:,4],label='Test velocity output')
+plt.plot(test_batch_x[0,:,3],test_batch_x[0,:,4],label='Test velocity input')
+plt.plot(test_batch_y[0,:,3],test_batch_y[0,:,4],label='True velocity')
+plt.xlabel('x axis')
+plt.ylabel('y axis')
+plt.grid(which='both')
+plt.legend()
+plt.subplot(224)
+plt.title('Velocity')
 #plt.gca().set_yscale('log')
 plt.plot(range(len(lr_plot)),lr_plot,label='Exponentially decayed to %i percent every 20 iterations'%(DECAY*100))
 plt.xlabel('Adam iteration')
