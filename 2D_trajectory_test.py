@@ -35,7 +35,6 @@ def gen_sample(f, vnoise, xnoise):
     noisy_x  = true_x+(sp.random.rand(*true_x.shape)-0.5)*xnoise
     
     
-    
     return sp.vstack([true_x,true_v]).T, sp.vstack([noisy_x,noisy_v]).T
 
 #%%

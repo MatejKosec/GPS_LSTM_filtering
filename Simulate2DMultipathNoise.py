@@ -11,15 +11,15 @@ import functools
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 30
+N_HIDDEN = 40
 N_INPUT = 4
 N_PLOTS = 4
 N_OUTPUT = 4
-LR_BASE = 5e-3
-BATCH_SIZE = 80
+LR_BASE = 1e-2
+BATCH_SIZE = 100
 ITRS = 800
-REG = 1.1e-3
-DROPOUT1= 0.02
+REG = 2e-2
+DROPOUT1= 0.2
 
 #Noise parameters
 VNOISE_MU    = [1.0,5.0]
@@ -55,7 +55,7 @@ class bimodal_gaussian_2D(object):
         
         #Make sure the cdf is bounded before interpolating the inverse
         bimodal_cdf[-1,-1]=1
-        bimodal_cdf[0,0]=0
+        bimodal_cdf[-1,0]=0
         self.ppfx = interpolate.interp1d(bimodal_cdf[-1,:],x_eval_space)
         self.ppfix = interpolate.interp1d(x_eval_space,sp.arange(npts))
         if plot: print('Done building interpolator')
@@ -89,8 +89,8 @@ class bimodal_gaussian_2D(object):
             a = bimodal_partial_cdf[:,upper_index]
             b = bimodal_partial_cdf[:,lower_index]
             
-            samples_upper = ppy_upper(ysample*(max(a)-min(a)) + min(a))
-            samples_lower = ppy_lower(ysample*(max(b)-min(b)) + min(b))
+            samples_upper = ppy_upper(ysample*(max(a)-min(a))*0.9999 + min(a)*1.001)
+            samples_lower = ppy_lower(ysample*(max(b)-min(b))*0.9999 + min(b)*1.001)
             
             #Lerp over the lower and upper
             a = self.x_eval_space[upper_index]
@@ -141,55 +141,49 @@ if __name__ == "__main__":
     plt.ylabel('$\Delta$ y [m] ')
     plt.xlabel('$\Delta$ x [m] ')
     
-    #plt.savefig('bimodal_distribution_example_2D.png',bbox_inches='tight',dpi=100)
+    plt.savefig('bimodal_distribution_example_2D.png',bbox_inches='tight',dpi=100)
 
 #%% Generate true labels and noisy data for a given time-frame
 t = sp.linspace(0,10,N_TIME)
-def gen_sample(vx,vy,noise_alpha, vnoise_sigma, xnoise_mu1,xnoise_mu2, xnoise_sigma1,xnoise_sigma2):
+def gen_sample(v,vnoise_sigma, xnoise_mu1,xnoise_mu2, xnoise_sigma1,xnoise_sigma2):
+    vx = v[0]
+    vy = v[1]
     true_vy = [vx for _ in t[:N_TIME//4]]+[0.0]*(N_TIME//4)+[-vx for _ in t[N_TIME//2:3*N_TIME//4]] +[0.0]*(N_TIME//4)
     true_vx = [0.0]*(N_TIME//4)+[vy for _ in t[N_TIME//4:N_TIME//2]] + [0.0]*(N_TIME//4) + [-vy for _ in t[3*N_TIME//4:]]
     true_v  = sp.vstack([true_vx,true_vy])
     true_x  = cumtrapz(true_v,t,initial=0)
     
     #Velocity only has Gaussian noise
-    noisy_v = true_v+sp.random.randn(*true_v.shape)*vnoise_sigma
+    noisy_v = true_v+sp.random.randn(*true_v.shape)*sp.reshape(vnoise_sigma,[2,1])
     
     #Position has bimodal noise that keeps constant orientation (as if building is throwing a shadow)
-    noise_dist = bimodal_gaussian(xnoise_mu1,xnoise_mu2,xnoise_sigma1,xnoise_sigma2,-10,10,150)
-    noisy_delta  = noise_dist.sample(*t.shape) #1D samples
-    
-    #Now project the 1D noise onto the 2D space
-    noisy_x = true_x + sp.array([[sp.cos(noise_alpha)],[sp.sin(noise_alpha)]])*noisy_delta
-    
-    return sp.stack([true_x,true_vx]).T, sp.stack([noisy_x,noisy_v]).T
+    noise_dist = bimodal_gaussian_2D(xnoise_mu1,xnoise_mu2,xnoise_sigma1,xnoise_sigma2,-10,10,150)
+    noisy_x  = true_x + noise_dist.sample(*t.shape).T #1D samples
+    print(noisy_x.shape,noisy_v.shape)
+    return sp.vstack([true_x,true_v]).T, sp.vstack([noisy_x,noisy_v]).T
+
 
 #%% Each sample will contain a trajectory of constant veloity and varying noise distribution
 #Sample random noise distributions in a given range
 #TODO incorporate noise_alpha
 N_SAMPLES  = BATCH_SIZE+N_PLOTS
-noise_alpha  = (NOISE_ALPHA[1]-NOISE_ALPHA[0])*sp.random.rand(N_SAMPLES) + NOISE_ALPHA[0]
-vxnoise_mu    = (VXNOISE_MU[1]-VXNOISE_MU[0])*sp.random.rand(N_SAMPLES) + VXNOISE_MU[0]
-vxnoise_sigma = (VXNOISE_SCALE[1]-VXNOISE_SCALE[0])*sp.random.rand(N_SAMPLES)+VXNOISE_SCALE[0]
-vynoise_mu    = (VYNOISE_MU[1]-VYNOISE_MU[0])*sp.random.rand(N_SAMPLES) + VYNOISE_MU[0]
-vynoise_sigma = (VYNOISE_SCALE[1]-VYNOISE_SCALE[0])*sp.random.rand(N_SAMPLES)+VYNOISE_SCALE[0]
-xnoise_mu1   = (XNOISE_MU1[1]-XNOISE_MU1[0])*sp.random.rand(N_SAMPLES) + XNOISE_MU1[0]
-left_right = 2*((sp.random.rand(N_SAMPLES)>0.5)-0.5)
-left_right[-1] = 1
-left_right[-2] = -1
-left_right[-3] = 1
-left_right[-4] = -1
-xnoise_mu2   = left_right*((XNOISE_MU2[1]-XNOISE_MU2[0])*sp.random.rand(N_SAMPLES) + XNOISE_MU2[0])
-xnoise_scale1 = (XNOISE_SCALE1[1]-XNOISE_SCALE1[0])*sp.random.rand(N_SAMPLES) + XNOISE_SCALE1[0]
-xnoise_scale2 = (XNOISE_SCALE2[1]-XNOISE_SCALE2[0])*sp.random.rand(N_SAMPLES) + XNOISE_SCALE2[0]
+noise_alpha  = (NOISE_ALPHA[1]-NOISE_ALPHA[0])*sp.random.rand(N_SAMPLES,2) + NOISE_ALPHA[0]
+vnoise_mu    = (VNOISE_MU[1]-VNOISE_MU[0])*sp.random.rand(N_SAMPLES,2) + VNOISE_MU[0]
+vnoise_sigma = (VNOISE_SCALE[1]-VNOISE_SCALE[0])*sp.random.rand(N_SAMPLES,2)+VNOISE_SCALE[0]
+xnoise_mu1   = (XNOISE_MU1[1]-XNOISE_MU1[0])*sp.random.rand(N_SAMPLES,2) + XNOISE_MU1[0]
+left_right = 2*((sp.random.rand(N_SAMPLES,2)>0.5)-0.5)
+xnoise_mu2   = left_right*((XNOISE_MU2[1]-XNOISE_MU2[0])*sp.random.rand(N_SAMPLES,2) + XNOISE_MU2[0])
+xnoise_scale1 = (XNOISE_SCALE1[1]-XNOISE_SCALE1[0])*sp.random.rand(N_SAMPLES,2) + XNOISE_SCALE1[0]
+xnoise_scale2 = (XNOISE_SCALE2[1]-XNOISE_SCALE2[0])*sp.random.rand(N_SAMPLES,2) + XNOISE_SCALE2[0]
 
-batch_generation_inputs = zip(vnoise_mu,noise_alpha,vnoise_sigma,xnoise_mu1,xnoise_mu2,xnoise_scale1,xnoise_scale2)
+batch_generation_inputs = zip(vnoise_mu,vnoise_sigma,xnoise_mu1,xnoise_mu2,xnoise_scale1,xnoise_scale2)
 
 y_batch, x_batch = list(zip(*[gen_sample(*generator) for generator in batch_generation_inputs]))
 batch_y= sp.stack(y_batch)
 batch_x= sp.stack(x_batch)
 print(batch_y.shape,batch_x.shape)
 
-if True:
+if False:
     plt.figure(figsize=(14,16))
     for batch_idx in range(N_PLOTS):
         noisy_x = batch_x[batch_idx,:,0]
@@ -218,7 +212,7 @@ if True:
         plt.grid(which='both')
         plt.legend()
         
-    plt.savefig('bimodal_example_data_1D.png',dpi=200)
+    plt.savefig('bimodal_example_data_2D.png',dpi=200)
 
 #%%
 g1 = tf.Graph()
@@ -239,7 +233,7 @@ with g1.as_default():
     lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.9)
     
     #Residual weapper
-    #lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
+    lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
         
     #UNROLL
     lstm_inputs = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(x)
@@ -324,31 +318,35 @@ plt.xlabel('Adam iteration')
 plt.ylabel('L2 fitting loss')
 plt.grid(which='both')
 plt.legend()
-plt.savefig('training_progress1D.png',bbox_inches='tight', dpi=200)
+plt.savefig('training_progress2D.png',bbox_inches='tight', dpi=200)
 
 
 
 #%% Compute the EKF results
-from KalmanFilterClass import LinearKalmanFilter1D, Data1D
+from KalmanFilterClass import LinearKalmanFilter2D, Data
 batch_kalman = []
-deltaT = sp.mean(t[1:] - t[0:-1])
-
-P0     = sp.identity(2)*0.01
-F0     = sp.array([[1, deltaT],\
-                   [0, 1]])
-H0     = sp.identity(2)
-Q0     = sp.diagflat([0.0001,0.00001])
-R0     = sp.diagflat([1.5,0.01])
-
 for i in range(batch_y.shape[0]):
-    data = Data1D(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),[])
-    state0 = sp.array([0, batch_x[i,0,1]]).T
-    filter1b = LinearKalmanFilter1D(F0, H0, P0, Q0, R0, state0)
+    deltaT = sp.mean(t[1:] - t[0:-1])
+    state0 = sp.squeeze(batch_x[i,0,:])
+    state0[0] = 0
+    state0[1] = 0
+    P0     = sp.identity(4)*0.0001
+    F0     = sp.array([[1, 0, deltaT, 0],\
+                       [0, 1, 0, deltaT],\
+                       [0, 0, 1, 0],\
+                       [0, 0, 0, 1]])
+    H0     = sp.identity(4)
+    Q0     = sp.diagflat([0.0001,0.0001,0.1,0.1])
+    R0     = sp.diagflat([6.0,6.0,1.,1.])
+
+
+    data = Data(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),sp.squeeze(batch_x[i,:,2]),sp.squeeze(batch_x[i,:,3]),[],[])
+    filter1b = LinearKalmanFilter2D(F0, H0, P0, Q0, R0, state0)
     kalman_data = filter1b.process_data(data)
-    batch_kalman.append(sp.vstack([kalman_data.x[1:], kalman_data.vx[1:]]).T)
+    batch_kalman.append(sp.vstack([kalman_data.x[1:],kalman_data.y[1:], kalman_data.vx[1:], kalman_data.vy[1:]]).T)
     
 xk_batch = sp.stack(batch_kalman)
-print(xk_batch.shape)
+xk_batch - batch_y
 print('Kalman loss;'.ljust(12), sp.mean(pow(xk_batch[BATCH_SIZE:,:,:] - batch_y[BATCH_SIZE:,:,:],2)))
 print(xk_batch.shape)
 #%% Plot the fit    
@@ -356,74 +354,54 @@ plt.figure(figsize=(14,16))
 N_PLOTS = 2
 for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     out_xc = sp.squeeze(out[batch_idx,:,0])
-    out_vxc = sp.squeeze(out[batch_idx,:,1])
+    out_yc = sp.squeeze(out[batch_idx,:,1])
+    out_vxc = sp.squeeze(out[batch_idx,:,2])
+    out_vyc = sp.squeeze(out[batch_idx,:,3])
     
     noisy_xc  = batch_x[batch_idx,:,0]
-    noisy_vxc = batch_x[batch_idx,:,1]
+    noisy_yc  = batch_x[batch_idx,:,1]
+    noisy_vxc = batch_x[batch_idx,:,2]
+    noisy_vyc = batch_x[batch_idx,:,3]
     
     true_xc = batch_y[batch_idx,:,0]
-    true_vxc = batch_y[batch_idx,:,1]
+    true_yc = batch_y[batch_idx,:,1]
+    true_vxc = batch_y[batch_idx,:,2]
+    true_vyc = batch_y[batch_idx,:,3]
     
     ekf_xc  = sp.squeeze(xk_batch[batch_idx,:,0])
-    ekf_vxc = sp.squeeze(xk_batch[batch_idx,:,1])
+    ekf_yc  = sp.squeeze(xk_batch[batch_idx,:,1])
+    ekf_vxc = sp.squeeze(xk_batch[batch_idx,:,2])
+    ekf_vyc = sp.squeeze(xk_batch[batch_idx,:,3])
     
-    x_eval = sp.linspace(-10,10,100)
-    #Create a bimodal pdf
-    loc1 = xnoise_mu1[batch_idx]
-    loc2 = xnoise_mu2[batch_idx]
-    scale1 = xnoise_scale1[batch_idx]
-    scale2 = xnoise_scale2[batch_idx]
-    bimodal_pdf = pdf(x_eval, loc=loc1, scale=scale1)*0.5 + \
-                  pdf(x_eval, loc=loc2, scale=scale2)*0.5
-
-    #Grab the LSTM and kalman losses for annotating 
-    lstm_loss = dev_losses[batch_idx-BATCH_SIZE]
-    kalman_loss = sp.mean(pow(xk_batch[batch_idx-BATCH_SIZE,:,:] - batch_y[batch_idx-BATCH_SIZE,:,:],2),axis=0)
+    
+    l2 = lambda x,y: pow(x**2 + y**2,0.5)
     
     plot_idx = batch_idx-BATCH_SIZE
-    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+1)
-    if batch_idx == BATCH_SIZE: plt.title('Position filtering')
-    plt.plot(t,true_xc,lw=2,label='True')
-    plt.text(5,0,'LSTM loss:    %3.2f \nKalman loss: %3.2f'%(lstm_loss[0],kalman_loss[0]),
-                                                            fontsize=12,color='white',\
-                                                            bbox=dict(facecolor='green', alpha=0.8))
-    plt.plot(t,noisy_xc,lw=1,label='Measured')
-    plt.plot(t,ekf_xc,lw=1,label='Linear KF')
-    plt.plot(t,out_xc,lw=1,label='LSTM')
+    plt.subplot(20+(N_PLOTS)*100 + plot_idx*2+1)
+    if batch_idx == 0: plt.title('Location x')
+    plt.plot(true_xc,true_yc,lw=2,label='true')
+    plt.plot(noisy_xc,noisy_yc,lw=1,label='measured')
+    plt.plot(ekf_xc,ekf_yc,lw=1,label='Linear KF')
+    plt.plot(out_xc,out_yc,lw=1,label='LSTM')
     plt.grid(which='both')
-    #plt.gca().equal()
+    plt.axis('equal')
     plt.ylabel('x[m]')
     plt.xlabel('time[s]')
     plt.legend()
     
-    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+2)
-    if batch_idx == BATCH_SIZE: plt.title('Velocity filtering (Gaussian noise)')
-    plt.plot(t,true_vxc,lw=2,label='True')
-    plt.plot(t,noisy_vxc,lw=1,label='Measured')
-    plt.plot(t,ekf_vxc,lw=1,label='Linear KF')
-    plt.plot(t,out_vxc,lw=1,label='LSTM')
-    plt.text(5,0,'LSTM loss:    %3.2f\nKalman loss: %3.2f'%(lstm_loss[1],kalman_loss[1]),
-                                                            fontsize=12,color='white',\
-                                                            bbox=dict(facecolor='green', alpha=0.8))
+    plt.subplot(20+(N_PLOTS)*100 + plot_idx*2+2)
+    if batch_idx == 0: plt.title('Velocity Norm')
+    #plt.plot(t,true_vxc,lw=2,label='true')
+    #plt.plot(t,noisy_vxc,lw=1,label='measured')
+    #plt.plot(t,ekf_vxc,lw=1,label='Linear KF')
+    #plt.plot(t,out_vxc,lw=1,label='LSTM')
+    plt.plot(t,l2(true_vxc,true_vyc),lw=2,label='true')
+    plt.plot(t,l2(noisy_vxc,noisy_vyc),lw=1,label='measured')
+    plt.plot(t,l2(ekf_vxc,ekf_vyc),lw=1,label='Linear KF')
+    plt.plot(t,l2(out_vxc,out_vyc),lw=1,label='LSTM')
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
     plt.grid(which='both')
     plt.legend()
-    
-    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+3)
-    if batch_idx == BATCH_SIZE: plt.title('Position noise distribution')
-    plt.grid(which='both')
-    plt.plot(x_eval,bimodal_pdf,'g', label='pdf')
-    plt.fill_between(x_eval,bimodal_pdf,0,color='g',alpha=0.4)
-    plt.ylim([0,0.2])
-    peak1 = 0.5/(pow(2*sp.pi,0.5)*scale1)
-    peak2 = 0.5/(pow(2*sp.pi,0.5)*scale2)
-    side = left_right[batch_idx]
-    plt.annotate('True peak', (loc1,peak1), (-5+side*5,peak1*1.2), \
-                 arrowprops=dict(facecolor='black', shrink=0.005))
-    plt.annotate('Multipath peak', (loc2,peak2), (1+side*1,peak2*0.7),\
-                 arrowprops=dict(facecolor='black', shrink=0.005))
-    plt.xlabel(r'$\Delta$ position x [m]')
-    plt.legend()
-    
-plt.savefig('bimodal_results_example1D.png',dpi=200)
+        
+plt.savefig('bimodal_results_example2D.png',dpi=200)
