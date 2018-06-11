@@ -11,16 +11,17 @@ import functools
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 40
+N_HIDDEN = 30
 N_INPUT = 4
-N_PLOTS = 10
+N_PLOTS = 25
 N_OUTPUT = 4
-LR_BASE = 1e-2
-BATCH_SIZE = 100
+LR_BASE = 2e-3
+BATCH_SIZE = 200
 ITRS = 600
-REG = 2e-2
-DROPOUT1= 0.05
-DROPOUT2= 0.1
+REG = 1.5e-1
+DROPOUT1= 0.10
+DROPOUT2= 0.10
+DECAY = 0.95
 
 #Noise parameters
 VNOISE_MU    = [1.5,5.0]
@@ -250,12 +251,17 @@ with tf.Session(graph=g1) as sess:
     itr=0
     learning_rate = LR_BASE
     while itr<ITRS:
-
-        sess.run(opt, feed_dict={x: train_batch_x, y: train_batch_y, lr:learning_rate, batch_size: train_batch_x.shape[0]})
+        
+        #Do somme minibatching
+        mini_size = 32
+        for i in range(0,train_batch_x.shape[0],mini_size):
+            start = i
+            end   = min(i+mini_size,train_batch_x.shape[0])
+            sess.run(opt, feed_dict={x: train_batch_x[start:end], y: train_batch_y[start:end], lr:learning_rate, batch_size: start-end})
         lr_plot.append(learning_rate)
         
         if itr %20==0:
-            learning_rate *= 0.93
+            learning_rate *= DECAY
             los,out=sess.run([loss,predictions],feed_dict={x:train_batch_x,y: train_batch_y,lr:learning_rate, batch_size: train_batch_x.shape[0],is_training: False})
             tra_loss_plot.append(los)
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
@@ -286,7 +292,7 @@ plt.legend()
 plt.subplot(122)
 plt.title('Learning rate')
 #plt.gca().set_yscale('log')
-plt.plot(range(len(lr_plot)),lr_plot,label='Exponentially decayed to 93% every 20 iterations')
+plt.plot(range(len(lr_plot)),lr_plot,label='Exponentially decayed to %i percent every 20 iterations'%(DECAY*100))
 plt.xlabel('Adam iteration')
 plt.ylabel('L2 fitting loss')
 plt.grid(which='both')
@@ -310,7 +316,7 @@ for i in range(batch_y.shape[0]):
                        [0, 0, 0, 1]])
     H0     = sp.identity(4)
     Q0     = sp.diagflat([0.0001,0.0001,0.1,0.1])
-    R0     = sp.diagflat([6.0,6.0,1.,1.])
+    R0     = sp.diagflat([6.0,6.0,0.5,0.5])
 
 
     data = Data(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),sp.squeeze(batch_x[i,:,2]),sp.squeeze(batch_x[i,:,3]),[],[])
@@ -345,36 +351,80 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     ekf_yc  = sp.squeeze(xk_batch[batch_idx,:,1])
     ekf_vxc = sp.squeeze(xk_batch[batch_idx,:,2])
     ekf_vyc = sp.squeeze(xk_batch[batch_idx,:,3])
+    ekf_v   = sp.linalg.norm(xk_batch[batch_idx,:,2:])
     
-    
+    #Grab the LSTM and kalman losses for annotating 
+    lstm_loss = dev_losses[batch_idx-BATCH_SIZE]
+    kalman_loss = sp.mean(pow(xk_batch[batch_idx-BATCH_SIZE,:,:] - batch_y[batch_idx-BATCH_SIZE,:,:],2),axis=0)
+
     l2 = lambda x,y: pow(x**2 + y**2,0.5)
     
+    #Plot the position filtering results
     plot_idx = batch_idx-BATCH_SIZE
-    plt.subplot(20+(N_PLOTS)*100 + plot_idx*2+1)
-    if batch_idx == 0: plt.title('Location x')
+    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+1)
+    if batch_idx == BATCH_SIZE: plt.title('Position filtering')
     plt.plot(true_xc,true_yc,lw=2,label='true')
     plt.plot(noisy_xc,noisy_yc,lw=1,label='measured')
     plt.plot(ekf_xc,ekf_yc,lw=1,label='Linear KF')
     plt.plot(out_xc,out_yc,lw=1,label='LSTM')
+    
+    pos1 = max(noisy_xc)*0.7
+    pos2 = min(noisy_yc)*0.9
+    plt.text(pos1,pos2,'LSTM loss:    %3.2f \nKalman loss: %3.2f'%(sp.linalg.norm(lstm_loss[0:2]),sp.linalg.norm(kalman_loss[0:2])),
+                                                            fontsize=12,color='white',\
+                                                            bbox=dict(facecolor='green', alpha=0.8))
+    
     plt.grid(which='both')
     plt.axis('equal')
     plt.ylabel('x[m]')
     plt.xlabel('time[s]')
-    plt.legend()
+    plt.legend(loc='upper left')
     
-    plt.subplot(20+(N_PLOTS)*100 + plot_idx*2+2)
-    if batch_idx == 0: plt.title('Velocity Norm')
-    #plt.plot(t,true_vxc,lw=2,label='true')
-    #plt.plot(t,noisy_vxc,lw=1,label='measured')
-    #plt.plot(t,ekf_vxc,lw=1,label='Linear KF')
-    #plt.plot(t,out_vxc,lw=1,label='LSTM')
+    #Plot the velocity filtering results
+    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+2)
+    if batch_idx == BATCH_SIZE: plt.title('Velocity filtering (Gaussian noise)')
     plt.plot(t,l2(true_vxc,true_vyc),lw=2,label='true')
     plt.plot(t,l2(noisy_vxc,noisy_vyc),lw=1,label='measured')
     plt.plot(t,l2(ekf_vxc,ekf_vyc),lw=1,label='Linear KF')
     plt.plot(t,l2(out_vxc,out_vyc),lw=1,label='LSTM')
+    plt.ylim([1,7])
+    pos1 = 7
+    pos2 = 6
+    plt.text(pos1,pos2,'LSTM loss:    %3.2f \nKalman loss: %3.2f'%(sp.linalg.norm(lstm_loss[2:]),sp.linalg.norm(kalman_loss[2:])),
+                                                            fontsize=12,color='white',\
+                                                            bbox=dict(facecolor='green', alpha=0.8))
+    
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
     plt.grid(which='both')
+    plt.legend(loc='upper left')
+    
+    
+    #Plot the noise distribution
+    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+3)
+    if batch_idx == BATCH_SIZE: plt.title('Position noise distribution')
+    loc1 = xnoise_mu1[batch_idx,:]
+    loc2 = xnoise_mu2[batch_idx,:]
+    noise_dist = bimodal_gaussian_2D(loc1,loc2,\
+                        xnoise_scale1[batch_idx,:],xnoise_scale2[batch_idx,:],-10,10,100)
+    bimodal_pdf = noise_dist.bimodal_pdf
+    bimodal_cdf = noise_dist.bimodal_cdf
+    x_eval = noise_dist.x_eval
+    y_eval = noise_dist.y_eval
+    plt.title('2D Bimodal distribution example')
+    plt.contour(x_eval,y_eval, bimodal_pdf,sp.logspace(-6,0,20))
+    a = noise_dist.sample(500)
+    plt.scatter(a[:,0],a[:,1],label='Example samples')
+    plt.annotate('True location peak', loc1, [loc1[i] - [2.1,-3][i] for i in range(2)],\
+                 arrowprops=dict(facecolor='black', shrink=0.005),
+                 bbox=dict(facecolor='white', alpha=0.8))
+    plt.annotate('Multipath location peak', loc2, [loc2[i] - [2.1,3][i] for i in range(2)],\
+                 arrowprops=dict(facecolor='black', shrink=0.005),
+                 bbox=dict(facecolor='white', alpha=0.8))
+    plt.grid(which='both')
     plt.legend()
+    plt.ylabel('$\Delta$ y [m] ')
+    plt.xlabel('$\Delta$ x [m] ')
+    
         
 plt.savefig('bimodal_results_example2D.png',dpi=200)
