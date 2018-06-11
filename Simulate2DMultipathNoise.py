@@ -11,24 +11,24 @@ import functools
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 30
+N_HIDDEN = 40
 N_INPUT = 4
-N_PLOTS = 4
+N_PLOTS = 10
 N_OUTPUT = 4
 LR_BASE = 1e-2
 BATCH_SIZE = 100
-ITRS = 800
-REG = 1e-2
-DROPOUT1= 0.1
+ITRS = 600
+REG = 2e-2
+DROPOUT1= 0.05
+DROPOUT2= 0.1
 
 #Noise parameters
-VNOISE_MU    = [1.0,5.0]
-VNOISE_SCALE = [0.9,1.4]
-XNOISE_SCALE1= [0.9,2.0]
-XNOISE_SCALE2= [0.9,2.0]
+VNOISE_MU    = [1.5,5.0]
+VNOISE_SCALE = [0.8,1.5]
+XNOISE_SCALE1= [0.8,1.5]
+XNOISE_SCALE2= [0.8,1.5]
 XNOISE_MU1   = [0.0,0.0]
-XNOISE_MU2   = [4.0,6.0]
-NOISE_ALPHA  = [0, 2*sp.pi]
+XNOISE_MU2   = [3.0,5.0]
 
 sp.random.seed(0)
 #%%
@@ -167,7 +167,6 @@ def gen_sample(v,vnoise_sigma, xnoise_mu1,xnoise_mu2, xnoise_sigma1,xnoise_sigma
 #Sample random noise distributions in a given range
 #TODO incorporate noise_alpha
 N_SAMPLES  = BATCH_SIZE+N_PLOTS
-noise_alpha  = (NOISE_ALPHA[1]-NOISE_ALPHA[0])*sp.random.rand(N_SAMPLES,2) + NOISE_ALPHA[0]
 vnoise_mu    = (VNOISE_MU[1]-VNOISE_MU[0])*sp.random.rand(N_SAMPLES,2) + VNOISE_MU[0]
 vnoise_sigma = (VNOISE_SCALE[1]-VNOISE_SCALE[0])*sp.random.rand(N_SAMPLES,2)+VNOISE_SCALE[0]
 xnoise_mu1   = (XNOISE_MU1[1]-XNOISE_MU1[0])*sp.random.rand(N_SAMPLES,2) + XNOISE_MU1[0]
@@ -183,36 +182,6 @@ batch_y= sp.stack(y_batch)
 batch_x= sp.stack(x_batch)
 print(batch_y.shape,batch_x.shape)
 
-if False:
-    plt.figure(figsize=(14,16))
-    for batch_idx in range(N_PLOTS):
-        noisy_x = batch_x[batch_idx,:,0]
-        noisy_vx = batch_x[batch_idx,:,1]
-        true_x = batch_y[batch_idx,:,0]
-        true_vx = batch_y[batch_idx,:,1]
-        
-        plt.subplot(20+(N_PLOTS)*100 + batch_idx*2+1)
-        if batch_idx == 0: plt.title('Location x')
-        plt.plot(t,true_x,lw=2,label='true')
-        plt.plot(t,noisy_x,lw=1,label=r'measured ($\mu =$ [%3.2f, %3.2f], $\sigma =$ [%3.2f, %3.2f])'\
-                                                 %(xnoise_mu1[batch_idx],xnoise_mu2[batch_idx],\
-                                                   xnoise_scale1[batch_idx],xnoise_scale2[batch_idx]))
-        plt.grid(which='both')
-        plt.ylabel('x[m]')
-        plt.xlabel('time[s]')
-        plt.legend()
-        
-        plt.subplot(20+(N_PLOTS)*100 + batch_idx*2+2)
-        if batch_idx == 0: plt.title('Velocity x')
-        plt.plot(t,true_vx,lw=2,label='true')
-        plt.plot(t,noisy_vx,lw=1,label='measured')
-        plt.ylabel('vx[m/s]')
-        plt.xlabel('time[s]')
-        plt.ylim([0,10])
-        plt.grid(which='both')
-        plt.legend()
-        
-    plt.savefig('bimodal_example_data_2D.png',dpi=200)
 
 #%%
 g1 = tf.Graph()
@@ -234,6 +203,10 @@ with g1.as_default():
     
     #Residual weapper
     #lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
+    
+    #Dropout wrapper
+    lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, input_keep_prob=tf.maximum(1-DROPOUT2,1-tf.cast(is_training,tf.float32)),\
+                                              output_keep_prob=tf.maximum(1-DROPOUT2,1-tf.cast(is_training,tf.float32)))
         
     #UNROLL
     lstm_inputs = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(x)
