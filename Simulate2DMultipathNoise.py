@@ -312,8 +312,8 @@ for i in range(batch_y.shape[0]):
     P0     = sp.identity(4)*0.0001
     F0     = sp.array([[1, 0, deltaT, 0],\
                        [0, 1, 0, deltaT],\
-                       [0, 0, 1, 0],\
-                       [0, 0, 0, 1]])
+                       [0, 0, 1, 0.1],\
+                       [0, 0, 0.1, 1]])
     H0     = sp.identity(4)
     Q0     = sp.diagflat([0.0001,0.0001,0.1,0.1])
     R0     = sp.diagflat([6.0,6.0,0.5,0.5])
@@ -329,7 +329,7 @@ xk_batch - batch_y
 print('Kalman loss;'.ljust(12), sp.mean(pow(xk_batch[BATCH_SIZE:,:,:] - batch_y[BATCH_SIZE:,:,:],2)))
 print(xk_batch.shape)
 #%% Plot the fit    
-plt.figure(figsize=(14,16))
+plt.figure(figsize=(16,19))
 N_PLOTS = 3
 for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     out_xc = sp.squeeze(out[batch_idx,:,0])
@@ -361,18 +361,20 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     
     #Plot the position filtering results
     plot_idx = batch_idx-BATCH_SIZE
-    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+1)
+    ax = plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+1)
     if batch_idx == BATCH_SIZE: plt.title('Position filtering')
-    plt.plot(true_xc,true_yc,lw=2,label='true')
+    plt.plot(true_xc,true_yc,lw=2,label='truth')
     plt.plot(noisy_xc,noisy_yc,lw=1,label='measured')
     plt.plot(ekf_xc,ekf_yc,lw=1,label='Linear KF')
     plt.plot(out_xc,out_yc,lw=1,label='LSTM')
     
-    pos1 = max(noisy_xc)*0.7
-    pos2 = min(noisy_yc)*0.9
+    pos1 = 0.97
+    pos2 = 0.02
     plt.text(pos1,pos2,'LSTM loss:    %3.2f \nKalman loss: %3.2f'%(sp.linalg.norm(lstm_loss[0:2]),sp.linalg.norm(kalman_loss[0:2])),
                                                             fontsize=12,color='white',\
-                                                            bbox=dict(facecolor='green', alpha=0.8))
+                                                            bbox=dict(facecolor='green', alpha=0.8),
+                                                            transform=ax.transAxes,
+                                                            verticalalignment='bottom', horizontalalignment='right')
     
     plt.grid(which='both')
     plt.axis('equal')
@@ -381,18 +383,20 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.legend(loc='upper left')
     
     #Plot the velocity filtering results
-    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+2)
+    ax = plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+2)
     if batch_idx == BATCH_SIZE: plt.title('Velocity filtering (Gaussian noise)')
-    plt.plot(t,l2(true_vxc,true_vyc),lw=2,label='true')
+    plt.plot(t,l2(true_vxc,true_vyc),lw=2,label='truth')
     plt.plot(t,l2(noisy_vxc,noisy_vyc),lw=1,label='measured')
     plt.plot(t,l2(ekf_vxc,ekf_vyc),lw=1,label='Linear KF')
     plt.plot(t,l2(out_vxc,out_vyc),lw=1,label='LSTM')
     plt.ylim([1,7])
-    pos1 = 7
-    pos2 = 6
+    pos1 = 0.97
+    pos2 = 0.02
     plt.text(pos1,pos2,'LSTM loss:    %3.2f \nKalman loss: %3.2f'%(sp.linalg.norm(lstm_loss[2:]),sp.linalg.norm(kalman_loss[2:])),
                                                             fontsize=12,color='white',\
-                                                            bbox=dict(facecolor='green', alpha=0.8))
+                                                            bbox=dict(facecolor='green', alpha=0.8),
+                                                            transform=ax.transAxes,
+                                                            verticalalignment='bottom', horizontalalignment='right')
     
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
@@ -411,7 +415,6 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     bimodal_cdf = noise_dist.bimodal_cdf
     x_eval = noise_dist.x_eval
     y_eval = noise_dist.y_eval
-    plt.title('2D Bimodal distribution example')
     plt.contour(x_eval,y_eval, bimodal_pdf,sp.logspace(-6,0,20))
     a = noise_dist.sample(500)
     plt.scatter(a[:,0],a[:,1],label='Example samples')

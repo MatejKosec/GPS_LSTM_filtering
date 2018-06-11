@@ -316,12 +316,16 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     kalman_loss = sp.mean(pow(xk_batch[batch_idx-BATCH_SIZE,:,:] - batch_y[batch_idx-BATCH_SIZE,:,:],2),axis=0)
     
     plot_idx = batch_idx-BATCH_SIZE
-    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+1)
+    ax = plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+1)
     if batch_idx == BATCH_SIZE: plt.title('Position filtering')
     plt.plot(t,true_xc,lw=2,label='True')
-    plt.text(5,0,'LSTM loss:    %3.2f \nKalman loss: %3.2f'%(lstm_loss[0],kalman_loss[0]),
+    pos1 = 0.98
+    pos2 = 0.02
+    plt.text(pos1,pos2,'LSTM loss:    %3.2f \nKalman loss: %3.2f'%(lstm_loss[0],kalman_loss[0]),
                                                             fontsize=12,color='white',\
-                                                            bbox=dict(facecolor='green', alpha=0.8))
+                                                            bbox=dict(facecolor='green', alpha=0.8),
+                                                            transform=ax.transAxes,
+                                                            verticalalignment='bottom', horizontalalignment='right')
     plt.plot(t,noisy_xc,lw=1,label='Measured')
     plt.plot(t,ekf_xc,lw=1,label='Linear KF')
     plt.plot(t,out_xc,lw=1,label='LSTM')
@@ -331,15 +335,19 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.xlabel('time[s]')
     plt.legend()
     
-    plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+2)
+    ax = plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+2)
     if batch_idx == BATCH_SIZE: plt.title('Velocity filtering (Gaussian noise)')
     plt.plot(t,true_vxc,lw=2,label='True')
     plt.plot(t,noisy_vxc,lw=1,label='Measured')
     plt.plot(t,ekf_vxc,lw=1,label='Linear KF')
     plt.plot(t,out_vxc,lw=1,label='LSTM')
-    plt.text(5,0,'LSTM loss:    %3.2f\nKalman loss: %3.2f'%(lstm_loss[1],kalman_loss[1]),
+    pos1 = 0.98
+    pos2 = 0.02
+    plt.text(pos1,pos2,'LSTM loss:    %3.2f\nKalman loss: %3.2f'%(lstm_loss[1],kalman_loss[1]),
                                                             fontsize=12,color='white',\
-                                                            bbox=dict(facecolor='green', alpha=0.8))
+                                                            bbox=dict(facecolor='green', alpha=0.8),
+                                                            transform=ax.transAxes,
+                                                            verticalalignment='bottom', horizontalalignment='right')
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
     plt.grid(which='both')
