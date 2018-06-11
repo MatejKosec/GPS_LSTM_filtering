@@ -3,10 +3,12 @@ import functools
 from itertools import permutations
 from tensorflow.contrib.seq2seq import TrainingHelper, BasicDecoder, dynamic_decode,LuongAttention, AttentionWrapper
 import scipy as sp
+import numpy as np
 import random
 from scipy.integrate import cumtrapz
+import matplotlib
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
-
 
 #%% Constants
 N_TIME = 100
@@ -22,6 +24,7 @@ REG = 2e-4
 
 #%% Generate a sample
 t = sp.linspace(0,10,N_TIME)
+
 def gen_sample(f, vnoise, xnoise):
     true_vy = [f[1](tprime) for tprime in t[:N_TIME//4]]+[0.0]*(N_TIME//4)+[-f[1](tprime-t[N_TIME//2]) for tprime in t[N_TIME//2:3*N_TIME//4]] +[0.0]*(N_TIME//4)
     true_vx = [0.0]*(N_TIME//4)+[-f[0](tprime-t[N_TIME//4]) for tprime in t[N_TIME//4:N_TIME//2]] + [0.0]*(N_TIME//4) + [f[0](tprime-t[3*N_TIME//4]) for tprime in t[3*N_TIME//4:]]
@@ -33,6 +36,10 @@ def gen_sample(f, vnoise, xnoise):
     noisy_v  = true_v+(sp.random.rand(*true_v.shape)-0.5)*vnoise
     #noisy_x  = true_x+sp.random.randn(*true_x.shape)*xnoise
     noisy_x  = true_x+(sp.random.rand(*true_x.shape)-0.5)*xnoise
+<<<<<<< HEAD
+=======
+    
+>>>>>>> ce7f7d394a400190409def1c7004335ae3bc04a8
     
     
     return sp.vstack([true_x,true_v]).T, sp.vstack([noisy_x,noisy_v]).T
@@ -42,7 +49,11 @@ def gen_sample(f, vnoise, xnoise):
 f1D = [lambda x: x/max(t),lambda f: -1.7*f/max(t), sp.sin, sp.cos, sp.tanh, lambda z: 0.25*(sp.sin(z)+sp.cos(z)**2), lambda x: -x/max(t)*1.05]
 fcouples = list(permutations(f1D,2))
 random.shuffle(fcouples)
+<<<<<<< HEAD
 y_batch, x_batch = list(zip(*[gen_sample(f, 0.05, 0.05) for f in fcouples]))
+=======
+y_batch, x_batch = list(zip(*[gen_sample(f, 1, 1) for f in fcouples]))
+>>>>>>> ce7f7d394a400190409def1c7004335ae3bc04a8
 batch_y= sp.stack(y_batch)
 batch_x= sp.stack(x_batch)
 print(batch_y.shape,batch_x.shape)
@@ -79,8 +90,19 @@ with g1.as_default():
     print('Predictions:', predictions.shape)
     
     #loss_function
-    loss= tf.reduce_mean((y-predictions)**2)
-    #optimization
+    #vel_path = sp.integrate.cumtrapz(predictions[:,:,3], predictions[:,:,1], axis=2, initial=0)
+
+    #print(predictions[:,1:,2].shape)
+    #print(tf.concat(( tf.zeros([batch_size,1]), predictions[:,1:,3]), axis=1).shape)
+    #print(predictions[:,:,3].shape)
+	#np.stack(( np.zeros([100,1], dtype=int), predictions[:,1:,3])
+    pos_diff1 = predictions[:,:,1] - tf.concat(( tf.zeros([batch_size,1]), predictions[:,1:,1]), axis=1)
+    pos_diff2 = predictions[:,:,2] - tf.concat(( tf.zeros([batch_size,1]), predictions[:,1:,2]), axis=1)
+    ##print(pos_diff.shape)
+    #vel_path = np.cumsuma((predictions[:,:,3]-[0;predictions[:,:-2,3]])*2.5,axis=2, dtype=, out=None)
+    #print('velocity_integrated_path',vel_path.shape)
+    loss= tf.reduce_mean((y-predictions)**2) + 0.001*tf.reduce_mean((predictions[:,:,3] - pos_diff1/0.1)**2) #+ tf.reduce_mean((predictions[:,:,4] - pos_diff2/0.1)**2)
+    ##optimization
     opt=tf.train.AdamOptimizer(learning_rate=lr).minimize(loss)
     print('Compiled loss and trainer')
     
@@ -133,7 +155,11 @@ for i in range(batch_y.shape[0]):
                        [0, 0, 0, 1]])
     H0     = sp.identity(4)
     Q0     = sp.diagflat([0.0005,0.0005,0.1,0.1])
+<<<<<<< HEAD
     R0     = sp.diagflat([0.07,0.07,0.07,0.07])
+=======
+    R0     = sp.diagflat([7,7,7,7])
+>>>>>>> ce7f7d394a400190409def1c7004335ae3bc04a8
 
 
     data = Data(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),sp.squeeze(batch_x[i,:,2]),sp.squeeze(batch_x[i,:,3]),[],[])
@@ -180,7 +206,11 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.plot(ekf_xc,ekf_yc,lw=1,label='Linear KF')
     plt.plot(out_xc,out_yc,lw=1,label='LSTM')
     plt.grid(which='both')
+<<<<<<< HEAD
     plt.gca().equal()
+=======
+    #plt.gca().equal()
+>>>>>>> ce7f7d394a400190409def1c7004335ae3bc04a8
     plt.ylabel('x[m]')
     plt.xlabel('time[s]')
     plt.legend()
