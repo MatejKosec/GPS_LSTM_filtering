@@ -11,15 +11,15 @@ import functools
 
 #%% Constants
 N_TIME = 100
-N_HIDDEN = 40
+N_HIDDEN = 30
 N_INPUT = 4
 N_PLOTS = 4
 N_OUTPUT = 4
 LR_BASE = 1e-2
 BATCH_SIZE = 100
 ITRS = 800
-REG = 2e-2
-DROPOUT1= 0.2
+REG = 1e-2
+DROPOUT1= 0.1
 
 #Noise parameters
 VNOISE_MU    = [1.0,5.0]
@@ -230,10 +230,10 @@ with g1.as_default():
     
     
     #defining the network as stacked layers of LSTMs
-    lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.9)
+    lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.99)
     
     #Residual weapper
-    lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
+    #lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
         
     #UNROLL
     lstm_inputs = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(x)
@@ -299,7 +299,7 @@ with tf.Session(graph=g1) as sess:
     
     out  = sp.concatenate([out,out2],axis=0)
     
-#%%
+    #%%
 plt.figure(figsize=(14,4))
 plt.subplot(121)
 plt.title('Training progress ylog plot')
@@ -351,7 +351,7 @@ print('Kalman loss;'.ljust(12), sp.mean(pow(xk_batch[BATCH_SIZE:,:,:] - batch_y[
 print(xk_batch.shape)
 #%% Plot the fit    
 plt.figure(figsize=(14,16))
-N_PLOTS = 2
+N_PLOTS = 3
 for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     out_xc = sp.squeeze(out[batch_idx,:,0])
     out_yc = sp.squeeze(out[batch_idx,:,1])
