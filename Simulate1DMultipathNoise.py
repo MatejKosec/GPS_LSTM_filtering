@@ -13,13 +13,16 @@ import functools
 N_TIME = 100
 N_HIDDEN = 30
 N_INPUT = 2
-N_PLOTS = 4
+N_PLOTS = 10
 N_OUTPUT = 2
-LR_BASE = 5e-3
-BATCH_SIZE = 80
+LR_BASE = 1e-4
+BATCH_SIZE = 180
 ITRS = 800
-REG = 1.1e-3
+REG = 1.5e-2
 DROPOUT1= 0.02
+DROPOUT2= 0.00
+DECAY  = 0.93
+MINI_SIZE = 64
 
 #Noise parameters
 VNOISE_MU    = [1.0,5.0]
@@ -175,6 +178,10 @@ with g1.as_default():
     
     #Residual weapper
     #lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
+    
+    #Dropout wrapper
+    lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, input_keep_prob=tf.maximum(1-DROPOUT2,1-tf.cast(is_training,tf.float32)),\
+                                              output_keep_prob=tf.maximum(1-DROPOUT2,1-tf.cast(is_training,tf.float32)))
         
     #UNROLL
     lstm_inputs = tf.layers.Dense(N_HIDDEN, activation=tf.nn.relu,activity_regularizer=lambda z: REG*tf.nn.l2_loss(z))(x)
@@ -219,11 +226,16 @@ with tf.Session(graph=g1) as sess:
     learning_rate = LR_BASE
     while itr<ITRS:
 
-        sess.run(opt, feed_dict={x: train_batch_x, y: train_batch_y, lr:learning_rate, batch_size: train_batch_x.shape[0]})
+        #Do somme minibatching
+        mini_size = MINI_SIZE
+        for i in range(0,train_batch_x.shape[0],mini_size):
+            start = i
+            end   = min(i+mini_size,train_batch_x.shape[0])
+            sess.run(opt, feed_dict={x: train_batch_x[start:end], y: train_batch_y[start:end], lr:learning_rate, batch_size: start-end})
         lr_plot.append(learning_rate)
         
         if itr %20==0:
-            learning_rate *= 0.93
+            learning_rate *= DECAY
             los,out=sess.run([loss,predictions],feed_dict={x:train_batch_x,y: train_batch_y,lr:learning_rate, batch_size: train_batch_x.shape[0],is_training: False})
             tra_loss_plot.append(los)
             print("For iter %i, learning rate %3.6f"%(itr, learning_rate))
