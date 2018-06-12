@@ -14,7 +14,7 @@ plt.text(pos1,pos2,r'$[x, \dot{x}]$'.center(15),fontsize=12,color='black',\
 
 pos1 = 0.5
 pos2 = 0.12
-plt.text(pos1,pos2,'Dense layer \n(dim$==30$)'.center(15),fontsize=12,color='black',\
+plt.text(pos1,pos2,'Dense layer \n(dim$=30$)'.center(15),fontsize=12,color='black',\
          bbox=dict(facecolor='white', alpha=1,pad=5),
          transform=ax.transAxes,
          verticalalignment='bottom', horizontalalignment='center')

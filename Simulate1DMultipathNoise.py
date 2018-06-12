@@ -373,7 +373,7 @@ for batch_idx in range(BATCH_SIZE,BATCH_SIZE+N_PLOTS):
     plt.ylabel('vx[m/s]')
     plt.xlabel('time[s]')
     plt.grid(which='both')
-    plt.legend()
+    plt.legend(loc='upper right')
     
     plt.subplot(30+(N_PLOTS)*100 + plot_idx*3+3)
     if batch_idx == BATCH_SIZE: plt.title('Position noise distribution')
