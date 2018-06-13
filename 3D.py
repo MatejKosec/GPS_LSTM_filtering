@@ -15,7 +15,7 @@ cdf  = sp.stats.multivariate_normal.cdf
 import functools
 
 #%% Constants
-N_TIME = 625
+N_TIME = 125
 #file 1 has 663 timesteps
 #file 2 has 628 timesteps
 N_HIDDEN = 30
@@ -23,13 +23,13 @@ N_INPUT = 6
 N_PLOTS = 25
 N_OUTPUT = 6
 LR_BASE = 2e-3
-BATCH_SIZE = 15
-ITRS = 100
+BATCH_SIZE = 30
+ITRS = 600
 REG = 1.5e-1
 DROPOUT1= 0.10
 DROPOUT2= 0.10
 DECAY = 0.95
-RESTORE_CHECKPOINT  = True
+RESTORE_CHECKPOINT  = False
 PERFORM_TRAINING = True
 SAVE_DIR = './checkpoints'
 
@@ -54,11 +54,17 @@ def read_file(file_name):
 		row = row+1
 	print(row)
 	data_file.close()
-	data_reduced = np.vstack(all_data)[:N_TIME,:]
+	data_reduced = np.vstack(all_data)[:,:]
 	data_reduced[:,2:5] = data_reduced[:,2:5] - data_reduced[1,2:5]
 	data_reduced[:,8:11] = data_reduced[:,8:11] - data_reduced[1,8:11]
-
-	return data_reduced[:N_TIME,:]
+	
+	#Slicing data to get more training data for the dense layers
+	slice_size = 125
+	sliced_data = []
+	for i in range(row//slice_size):
+		sliced_data.append(np.array(data_reduced[i*slice_size:(i+1)*slice_size,:]))
+	
+	return sliced_data
 
 
 #%%
@@ -119,10 +125,11 @@ data = []
 #Add saver
 for i in range(8):
 	file_name = 'Oval_circ1_N'+str(i+1)+'.txt'
-	data.append(read_file(file_name))
+	data.extend(read_file(file_name))
 	file_name = 'Oval_circ2_N'+str(i+1)+'.txt'
-	data.append(read_file(file_name))
+	data.extend(read_file(file_name))
 #data contains [t, t_diff, x,y,z,vx,vy,vz, x_t,y_t,z_t,vx_t,vy_t,vz_t]
+
 all_data = sp.stack(data)
 batch_x = all_data[:,:,2:8]
 batch_y = all_data[:,:,8:]
