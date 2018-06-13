@@ -22,14 +22,14 @@ N_HIDDEN = 30
 N_INPUT = 6
 N_PLOTS = 25
 N_OUTPUT = 6
-LR_BASE = 2e-3
-BATCH_SIZE = 30
-ITRS = 600
-REG = 1.5e-1
-DROPOUT1= 0.10
-DROPOUT2= 0.10
-DECAY = 0.95
-RESTORE_CHECKPOINT  = False
+LR_BASE = 0.0006#(2e-3)*0.99**100
+BATCH_SIZE = 135
+ITRS = 80
+REG = 0#1.5e-5
+DROPOUT1= 0.0
+DROPOUT2= 0.0
+DECAY = 0.99
+RESTORE_CHECKPOINT  = True
 PERFORM_TRAINING = True
 SAVE_DIR = './checkpoints'
 
@@ -52,7 +52,7 @@ def read_file(file_name):
 			data.append(Decimal(item.strip()))
 		all_data.append(data)
 		row = row+1
-	print(row)
+	#print(row)
 	data_file.close()
 	data_reduced = np.vstack(all_data)[:,:]
 	data_reduced[:,2:5] = data_reduced[:,2:5] - data_reduced[1,2:5]
@@ -123,7 +123,7 @@ with g1.as_default():
 #%% TRAINING
 data = []
 #Add saver
-for i in range(8):
+for i in range(15):
 	file_name = 'Oval_circ1_N'+str(i+1)+'.txt'
 	data.extend(read_file(file_name))
 	file_name = 'Oval_circ2_N'+str(i+1)+'.txt'
@@ -171,7 +171,7 @@ with tf.Session(graph=g1) as sess:
                                is_training: False})
             dev_loss_plot.append(los2)
             print("DEV Loss ".ljust(12),los2)
-            if itr %100==0:
+            if itr %100==0 and itr > 0:
                 save_path = saver.save(sess, SAVE_DIR+"/model.ckpt")
                 print("Model saved in path: %s" % save_path)
             print("_"*80)
@@ -184,42 +184,44 @@ with tf.Session(graph=g1) as sess:
     out  = sp.concatenate([out,out2],axis=0)
     
     #%%
-plt.figure(figsize=(14,4))
-plt.subplot(221)
-plt.title('Training progress ylog plot')
-plt.gca().set_yscale('log')
-plt.plot(range(0,ITRS,20),dev_loss_plot,label='dev loss')
-plt.plot(range(0,ITRS,20),tra_loss_plot,label='train loss')
-plt.xlabel('Adam iteration')
-plt.ylabel('L2 fitting loss')
-plt.grid(which='both')
-plt.legend()
-plt.subplot(222)
-plt.title('Learning rate')
+for i in range(test_batch_x.shape[0]):
+	print(i)
+	plt.figure(figsize=(14,4))
+	plt.subplot(221)
+	plt.title('Training progress ylog plot')
+	plt.gca().set_yscale('log')
+	plt.plot(range(0,ITRS,20),dev_loss_plot,label='dev loss')
+	plt.plot(range(0,ITRS,20),tra_loss_plot,label='train loss')
+	plt.xlabel('Adam iteration')
+	plt.ylabel('L2 fitting loss')
+	plt.grid(which='both')
+	plt.legend()
+	plt.subplot(222)
+	plt.title('Learning rate')
 
-plt.plot(out2[0,:,0],out2[0,:,1],label='Test path output')
-plt.plot(test_batch_x[0,:,0],test_batch_x[0,:,1],label='Input path')
-plt.plot(test_batch_y[0,:,0],test_batch_y[0,:,1],label='True path')
-plt.xlabel('x axis')
-plt.ylabel('y axis')
-plt.grid(which='both')
-plt.legend()
-plt.subplot(223)
-plt.title('Position')
+	plt.plot(out2[i,:,0],out2[i,:,1],'r',label='Test path output')
+	plt.plot(test_batch_x[i,:,0],test_batch_x[i,:,1],'o',label='Input path')
+	plt.plot(test_batch_y[i,:,0],test_batch_y[i,:,1],'b',label='True path')
+	plt.xlabel('x axis')
+	plt.ylabel('y axis')
+	plt.grid(which='both')
+	plt.legend()
+	plt.subplot(223)
+	plt.title('Position')
 
-plt.plot(out2[0,:,3],out2[0,:,4],label='Test velocity output')
-plt.plot(test_batch_x[0,:,3],test_batch_x[0,:,4],label='Test velocity input')
-plt.plot(test_batch_y[0,:,3],test_batch_y[0,:,4],label='True velocity')
-plt.xlabel('x axis')
-plt.ylabel('y axis')
-plt.grid(which='both')
-plt.legend()
-plt.subplot(224)
-plt.title('Velocity')
-#plt.gca().set_yscale('log')
-plt.plot(range(len(lr_plot)),lr_plot,label='Exponentially decayed to %i percent every 20 iterations'%(DECAY*100))
-plt.xlabel('Adam iteration')
-plt.ylabel('L2 fitting loss')
-plt.grid(which='both')
-plt.legend()
-plt.savefig('training_progress2D.png',bbox_inches='tight', dpi=200)
+	plt.plot(out2[i,:,3],out2[i,:,4],'r',label='LSTM')
+	plt.plot(test_batch_x[i,:,3],test_batch_x[i,:,4],'o',label='Measured')
+	plt.plot(test_batch_y[i,:,3],test_batch_y[i,:,4],'b',label='True')
+	plt.xlabel('x axis')
+	plt.ylabel('y axis')
+	plt.grid(which='both')
+	plt.legend()
+	plt.subplot(224)
+	plt.title('Velocity')
+	#plt.gca().set_yscale('log')
+	plt.plot(range(len(lr_plot)),lr_plot,label='Exponentially decayed to %i percent every 20 iterations'%(DECAY*100))
+	plt.xlabel('Adam iteration')
+	plt.ylabel('L2 fitting loss')
+	plt.grid(which='both')
+	plt.legend()
+	plt.savefig('training_progress2D'+str(i)+'.png',bbox_inches='tight', dpi=200)
