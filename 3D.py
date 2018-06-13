@@ -24,12 +24,12 @@ N_PLOTS = 25
 N_OUTPUT = 6
 LR_BASE = (2e-3)#*0.99**100
 BATCH_SIZE = 90
-ITRS = 1000
-REG = 0#1.5e-5
-DROPOUT1= 0.0
-DROPOUT2= 0.0
+ITRS = 80#1000
+REG = 1.5e-2
+DROPOUT1= 0.1
+DROPOUT2= 0.1
 DECAY = 0.99
-RESTORE_CHECKPOINT  = False
+RESTORE_CHECKPOINT  = True
 PERFORM_TRAINING = True
 SAVE_DIR = './checkpoints'
 
@@ -214,10 +214,10 @@ print('Kalman loss;'.ljust(12), sp.mean(pow(xk_batch[BATCH_SIZE:,:,:] - batch_y[
 print(xk_batch.shape)
  
     #%%
-for i in range(3):#test_batch_x.shape[0]):
+for i in range(test_batch_x.shape[0]):
 	print(i)
 	plt.figure(figsize=(14,4))
-	plt.subplot(221)
+	plt.subplot(231)
 	plt.title('Training progress ylog plot')
 	plt.gca().set_yscale('log')
 	plt.plot(range(0,ITRS,20),dev_loss_plot,label='dev loss')
@@ -227,8 +227,8 @@ for i in range(3):#test_batch_x.shape[0]):
 	plt.grid(which='both')
 	plt.legend()
 	
-	plt.subplot(222)
-	plt.title('Position')
+	plt.subplot(232)
+	plt.title('Position Horizontal')
 	plt.plot(test_batch_y[i,:,0],test_batch_y[i,:,1],label='True')
 	plt.plot(test_batch_x[i,:,0],test_batch_x[i,:,1],label='Measured')
 	plt.plot(xk_batch[i,:,0],xk_batch[i,:,1],label='Linear KF')
@@ -239,8 +239,19 @@ for i in range(3):#test_batch_x.shape[0]):
 	plt.grid(which='both')
 	plt.legend()
 	
-	plt.subplot(223)
-	plt.title('Velocity')
+	plt.subplot(233)
+	plt.title('Position Vertical')
+	plt.plot(test_batch_y[i,:,2],label='True')
+	plt.plot(test_batch_x[i,:,2],label='Measured')
+	plt.plot(xk_batch[i,:,2],label='Linear KF')
+	plt.plot(out2[i,:,2],label='LSTM')
+	plt.xlabel('x axis')
+	plt.ylabel('y axis')
+	plt.grid(which='both')
+	plt.legend()
+	
+	plt.subplot(234)
+	plt.title('Velocity x')
 	plt.plot(test_batch_y[i,:,3],label='True')
 	plt.plot(test_batch_x[i,:,3],label='Measured')
 	plt.plot(xk_batch[i,:,3],label='Linear KF')
@@ -250,12 +261,34 @@ for i in range(3):#test_batch_x.shape[0]):
 	plt.grid(which='both')
 	plt.legend()
 	
-	plt.subplot(224)
-	plt.title('Learning Rate')
-	#plt.gca().set_yscale('log')
-	plt.plot(range(len(lr_plot)),lr_plot,label='Exponentially decayed to %i percent every 20 iterations'%(DECAY*100))
-	plt.xlabel('Adam iteration')
-	plt.ylabel('L2 fitting loss')
+	plt.subplot(235)
+	plt.title('Velocity y')
+	plt.plot(test_batch_y[i,:,4],label='True')
+	plt.plot(test_batch_x[i,:,4],label='Measured')
+	plt.plot(xk_batch[i,:,4],label='Linear KF')
+	plt.plot(out2[i,:,4],label='LSTM')
+	plt.xlabel('x axis')
+	plt.ylabel('y axis')
 	plt.grid(which='both')
 	plt.legend()
+	
+	plt.subplot(236)
+	plt.title('Velocity z')
+	plt.plot(test_batch_y[i,:,5],label='True')
+	plt.plot(test_batch_x[i,:,5],label='Measured')
+	plt.plot(xk_batch[i,:,5],label='Linear KF')
+	plt.plot(out2[i,:,5],label='LSTM')
+	plt.xlabel('x axis')
+	plt.ylabel('y axis')
+	plt.grid(which='both')
+	plt.legend()
+	
+	#plt.subplot(23)
+	#plt.title('Learning Rate')
+	#plt.gca().set_yscale('log')
+	#plt.plot(range(len(lr_plot)),lr_plot,label='Exponentially decayed to %i percent every 20 iterations'%(DECAY*100))
+	#plt.xlabel('Adam iteration')
+	#plt.ylabel('L2 fitting loss')
+	#plt.grid(which='both')
+	#plt.legend()
 	plt.savefig('training_progress2D'+str(i)+'.png',bbox_inches='tight', dpi=200)
