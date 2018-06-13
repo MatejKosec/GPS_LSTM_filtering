@@ -16,13 +16,13 @@ N_INPUT = 2
 N_PLOTS = 10
 N_OUTPUT = 2
 LR_BASE = 1e-3
-BATCH_SIZE = 200
+BATCH_SIZE = 400
 ITRS = 800
-REG = 1.5e-2
-DROPOUT1= 0.10
-DROPOUT2= 0.02
-DECAY  = 0.95
-MINI_SIZE = BATCH_SIZE
+REG = 1.1e-3
+DROPOUT1= 0.05
+DROPOUT2= 0.05
+DECAY  = 0.93
+MINI_SIZE = 64
 
 #Noise parameters
 VNOISE_MU    = [1.0,5.0]
@@ -174,7 +174,7 @@ with g1.as_default():
     
     
     #defining the network as stacked layers of LSTMs
-    lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.9)
+    lstm_cell =tf.nn.rnn_cell.LSTMCell(N_HIDDEN,forget_bias=0.99)
     
     #Residual weapper
     #lstm_cell = tf.nn.rnn_cell.ResidualWrapper(lstm_cell)    
