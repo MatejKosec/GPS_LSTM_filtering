@@ -300,6 +300,35 @@ plt.legend()
 plt.savefig('training_progress2D.png',bbox_inches='tight', dpi=200)
 
 
+#%% Compute the EKF results
+from KalmanFilterClass import LinearKalmanFilter3D, Data3D
+batch_kalman = []
+for i in range(batch_y.shape[0]):
+    deltaT = sp.mean(t[1:] - t[0:-1])
+    state0 = sp.squeeze(batch_x[i,0,:])
+    P0     = sp.identity(6)*0.0001
+    F0     = sp.array([[1, 0, 0, deltaT, 0, 0],\
+                       [0, 1, 0, 0, deltaT, 0],\
+                       [0, 0, 1, 0, 0, deltaT],\
+                       [0, 0, 0, 1, 0, 0],\
+                       [0, 0, 0, 0, 1, 0],
+                       [0, 0, 0, 0, 0, 1]])
+    H0     = sp.identity(6)
+    Q0     = sp.diagflat([0.0001,0.0001,0.0001,0.1,0.1,0.1])
+    R0     = sp.diagflat([6.0,6.0,6.0,0.5,0.5,0.5])
+    filter3d = LinearKalmanFilter3D(F0, H0, P0, Q0, R0, state0)
+
+
+    data = Data3D(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),sp.squeeze(batch_x[i,:,2]),sp.squeeze(batch_x[i,:,3]),[],[])
+    filter3d = LinearKalmanFilter3D(F0, H0, P0, Q0, R0, state0)
+    kalman_data = filter3d.process_data(data)
+    batch_kalman.append(sp.vstack([kalman_data.x[1:],kalman_data.y[1:],kalman_data.z[1:], kalman_data.vx[1:], kalman_data.vy[1:], kalman_data.vz[1:]]).T)
+    
+xk_batch = sp.stack(batch_kalman)
+xk_batch - batch_y
+print('Kalman loss;'.ljust(12), sp.mean(pow(xk_batch[BATCH_SIZE:,:,:] - batch_y[BATCH_SIZE:,:,:],2)))
+print(xk_batch.shape)
+
 
 #%% Compute the EKF results
 from KalmanFilterClass import LinearKalmanFilter2D, Data
