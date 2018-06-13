@@ -22,14 +22,14 @@ N_HIDDEN = 30
 N_INPUT = 6
 N_PLOTS = 25
 N_OUTPUT = 6
-LR_BASE = 0.0006#(2e-3)*0.99**100
-BATCH_SIZE = 135
-ITRS = 80
+LR_BASE = (2e-3)#*0.99**100
+BATCH_SIZE = 90
+ITRS = 1000
 REG = 0#1.5e-5
 DROPOUT1= 0.0
 DROPOUT2= 0.0
 DECAY = 0.99
-RESTORE_CHECKPOINT  = True
+RESTORE_CHECKPOINT  = False
 PERFORM_TRAINING = True
 SAVE_DIR = './checkpoints'
 
@@ -47,9 +47,9 @@ def read_file(file_name):
 		data = []
 		for ino,item in enumerate(line_items):
 			if ino == len(line_items):
-				data.append(Decimal(item[:-2].strip()))
+				data.append(float(item[:-2].strip()))
 				break
-			data.append(Decimal(item.strip()))
+			data.append(float(item.strip()))
 		all_data.append(data)
 		row = row+1
 	#print(row)
@@ -123,7 +123,7 @@ with g1.as_default():
 #%% TRAINING
 data = []
 #Add saver
-for i in range(15):
+for i in range(10):
 	file_name = 'Oval_circ1_N'+str(i+1)+'.txt'
 	data.extend(read_file(file_name))
 	file_name = 'Oval_circ2_N'+str(i+1)+'.txt'
@@ -182,9 +182,39 @@ with tf.Session(graph=g1) as sess:
                                is_training: False})[0]
     
     out  = sp.concatenate([out,out2],axis=0)
+
+
+#%% Compute the EKF results
+from KalmanFilterClass import LinearKalmanFilter3D, Data3D
+batch_kalman = []
+for i in range(batch_y.shape[0]):
+    deltaT = 1.0
+    state0 = sp.squeeze(batch_x[i,0,:])
+    P0     = sp.identity(6)*0.01
+    F0     = sp.array([[1, 0, 0, deltaT, 0, 0],\
+                       [0, 1, 0, 0, deltaT, 0],\
+                       [0, 0, 1, 0, 0, deltaT],\
+                       [0, 0, 0, 1, 0, 0],\
+                       [0, 0, 0, 0, 1, 0],
+                       [0, 0, 0, 0, 0, 1]])
+    H0     = sp.identity(6)
+    Q0     = sp.diagflat([50,50,50,0.01,0.01,0.01])
+    R0     = sp.diagflat([10,10,10,5,5,5])
+    filter3d = LinearKalmanFilter3D(F0, H0, P0, Q0, R0, state0)
+
+    #batch_x = sp.cast(batch_x, sp.float64)
+    data = Data3D(sp.squeeze(batch_x[i,:,0]),sp.squeeze(batch_x[i,:,1]),sp.squeeze(batch_x[i,:,2]),sp.squeeze(batch_x[i,:,3]),sp.squeeze(batch_x[i,:,4]),sp.squeeze(batch_x[i,:,5]),[],[])
+    filter3d = LinearKalmanFilter3D(F0, H0, P0, Q0, R0, state0)
+    kalman_data = filter3d.process_data(data)
+    batch_kalman.append(sp.vstack([kalman_data.x[1:],kalman_data.y[1:],kalman_data.z[1:], kalman_data.vx[1:], kalman_data.vy[1:], kalman_data.vz[1:]]).T)
     
+xk_batch = sp.stack(batch_kalman)
+#xk_batch - batch_y
+print('Kalman loss;'.ljust(12), sp.mean(pow(xk_batch[BATCH_SIZE:,:,:] - batch_y[BATCH_SIZE:,:,:],2)))
+print(xk_batch.shape)
+ 
     #%%
-for i in range(test_batch_x.shape[0]):
+for i in range(3):#test_batch_x.shape[0]):
 	print(i)
 	plt.figure(figsize=(14,4))
 	plt.subplot(221)
@@ -196,28 +226,32 @@ for i in range(test_batch_x.shape[0]):
 	plt.ylabel('L2 fitting loss')
 	plt.grid(which='both')
 	plt.legend()
+	
 	plt.subplot(222)
-	plt.title('Learning rate')
-
-	plt.plot(out2[i,:,0],out2[i,:,1],'r',label='Test path output')
-	plt.plot(test_batch_x[i,:,0],test_batch_x[i,:,1],'o',label='Input path')
-	plt.plot(test_batch_y[i,:,0],test_batch_y[i,:,1],'b',label='True path')
-	plt.xlabel('x axis')
-	plt.ylabel('y axis')
-	plt.grid(which='both')
-	plt.legend()
-	plt.subplot(223)
 	plt.title('Position')
-
-	plt.plot(out2[i,:,3],out2[i,:,4],'r',label='LSTM')
-	plt.plot(test_batch_x[i,:,3],test_batch_x[i,:,4],'o',label='Measured')
-	plt.plot(test_batch_y[i,:,3],test_batch_y[i,:,4],'b',label='True')
+	plt.plot(test_batch_y[i,:,0],test_batch_y[i,:,1],label='True')
+	plt.plot(test_batch_x[i,:,0],test_batch_x[i,:,1],label='Measured')
+	plt.plot(xk_batch[i,:,0],xk_batch[i,:,1],label='Linear KF')
+	plt.plot(out2[i,:,0],out2[i,:,1],label='LSTM')
+	plt.axis('equal')
 	plt.xlabel('x axis')
 	plt.ylabel('y axis')
 	plt.grid(which='both')
 	plt.legend()
-	plt.subplot(224)
+	
+	plt.subplot(223)
 	plt.title('Velocity')
+	plt.plot(test_batch_y[i,:,3],label='True')
+	plt.plot(test_batch_x[i,:,3],label='Measured')
+	plt.plot(xk_batch[i,:,3],label='Linear KF')
+	plt.plot(out2[i,:,3],label='LSTM')
+	plt.xlabel('x axis')
+	plt.ylabel('y axis')
+	plt.grid(which='both')
+	plt.legend()
+	
+	plt.subplot(224)
+	plt.title('Learning Rate')
 	#plt.gca().set_yscale('log')
 	plt.plot(range(len(lr_plot)),lr_plot,label='Exponentially decayed to %i percent every 20 iterations'%(DECAY*100))
 	plt.xlabel('Adam iteration')
