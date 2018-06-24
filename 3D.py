@@ -15,37 +15,37 @@ N_INPUT = 6
 N_PLOTS = 25
 N_OUTPUT = 6
 LR_BASE = (2e-3)#*0.99**100
-BATCH_SIZE = 90
-ITRS = 80#1000
+BATCH_SIZE = 60
+ITRS = 80 #1000
 REG = 1.5e-2
 DROPOUT1= 0.1
 DROPOUT2= 0.1
 DECAY = 0.99
-RESTORE_CHECKPOINT  = True
+RESTORE_CHECKPOINT  = False
 PERFORM_TRAINING = True
 SAVE_DIR = './checkpoints'
 
 def read_file(file_name):
-	data_file = open(file_name,"r")
-	#lines = data_file.readlines()
-	line = data_file.readline()
-	row = 0
-	x = 0
-	all_data = []
-	for line in data_file:
-		numbers = line.split(',')
-		#ts, t_diffs, xs,ys,zs,vxs,vys,vzs, x_ts,y_ts,z_ts,vx_ts,vy_ts,vz_ts = [each_line for each_line in numbers]
-		line_items = [each_line for each_line in numbers]
-		data = []
-		for ino,item in enumerate(line_items):
-			if ino == len(line_items):
-				data.append(float(item[:-2].strip()))
-				break
-			data.append(float(item.strip()))
-		all_data.append(data)
-		row = row+1
-	#print(row)
-	data_file.close()
+	with open(file_name,"r") as data_file:
+        	#lines = data_file.readlines()
+        	line = data_file.readline()
+        	row = 0
+        	x = 0
+        	all_data = []
+        	for line in data_file:
+        		numbers = line.split(',')
+        		#ts, t_diffs, xs,ys,zs,vxs,vys,vzs, x_ts,y_ts,z_ts,vx_ts,vy_ts,vz_ts = [each_line for each_line in numbers]
+        		line_items = [each_line for each_line in numbers]
+        		data = []
+        		for ino,item in enumerate(line_items):
+        			if ino == len(line_items):
+        				data.append(float(item[:-2].strip()))
+        				break
+        			data.append(float(item.strip()))
+        		all_data.append(data)
+        		row = row+1
+        	#print(row)
+	
 	data_reduced = np.vstack(all_data)[:,:]
 	data_reduced[:,2:5] = data_reduced[:,2:5] - data_reduced[1,2:5]
 	data_reduced[:,8:11] = data_reduced[:,8:11] - data_reduced[1,8:11]
@@ -116,9 +116,9 @@ with g1.as_default():
 data = []
 #Add saver
 for i in range(10):
-	file_name = 'Oval_circ1_N'+str(i+1)+'.txt'
+	file_name = './NewData/Oval_circ1_N'+str(i+1)+'.txt'
 	data.extend(read_file(file_name))
-	file_name = 'Oval_circ2_N'+str(i+1)+'.txt'
+	file_name = './NewData/Oval_circ2_N'+str(i+1)+'.txt'
 	data.extend(read_file(file_name))
 #data contains [t, t_diff, x,y,z,vx,vy,vz, x_t,y_t,z_t,vx_t,vy_t,vz_t]
 

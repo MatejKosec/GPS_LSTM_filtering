@@ -20,8 +20,10 @@ from collections import namedtuple
 
 Data = namedtuple('Data',['x','y','vx','vy','prx','pry'])
 Data1D = namedtuple('Data1D',['x','vx','prx'])
+Data3D = namedtuple('Data3D',['x','y','z','vx','vy','vz','prx','pry'])
 DOPS = namedtuple('DOPS',['x','y','p'])
 
+    
 class LinearKalmanFilter1D(object):
     def __init__(self, F, H, P, Q, R, initialState):
         self.F = F
@@ -136,6 +138,82 @@ class LinearKalmanFilter2D(object):
             self.update(m)
         
         return self.data
+    
+    
+class LinearKalmanFilter3D(object):
+    def __init__(self, F, H, P, Q, R, initialState):
+        self.F = F
+        self.H = H
+        self.P = P
+        self.Q = Q
+        self.R = R
+        self.hard_reset(initialState)
+        
+    
+    def hard_reset(self, state):
+        self.state = state
+        self.data = Data3D([],[],[],[],[],[],[],[])
+        self.append_data()
+    
+    def predict(self):
+        #Use the system dynawmics to predict how well we are fittinig
+        self.predictedState = dot([self.F, self.state])
+        self.predictedP = quadratic_form(self.F, self.P)+ self.Q
+
+    def update(self, measuredState):
+        #Compte the residual between measurement and prediction
+        self.prefitResidual = measuredState - dot([self.H, self.predictedState])
+        
+        #Compute the Klaman gain
+        intermediate = sp.linalg.inv(self.R + quadratic_form(self.H, self.predictedP))
+        self.Kt = dot([self.predictedP, self.H.T,intermediate])
+        
+        #Update the state
+        self.state = self.predictedState + dot([self.Kt, self.prefitResidual])
+        
+        #Update covariance matrix
+        self.P = quadratic_form(\
+                sp.identity(self.Kt.shape[0]) - dot([self.Kt,self.H]), self.predictedP)\
+                + quadratic_form(self.Kt, self.R)
+
+        #Compute the postfit residual to see how well we are doing
+        self.postfitResidual = measuredState - dot([self.H,self.state])
+        
+        #Store the results
+        self.append_data()
+        
+    def append_data(self):
+        self.data.x.append(self.state[0])
+        self.data.y.append(self.state[1])
+        self.data.z.append(self.state[2])
+        self.data.vx.append(self.state[3])
+        self.data.vy.append(self.state[4])
+        self.data.vz.append(self.state[5])
+        
+    def process_data(self, data):
+        for i in range(len(data.x)):
+            m = sp.array([data.x[i],data.y[i],data.z[i],data.vx[i],data.vy[i],data.vz[i]]).T
+            self.predict()
+            self.update(m)
+        
+        return self.data
+    
+if __name__ == "__main__":
+    deltaT = 0.1
+    state0 = [0,0,0,0,0,0]
+    state0[0] = 0
+    state0[1] = 0
+    P0     = sp.identity(6)*0.0001
+    F0     = sp.array([[1, 0, 0, deltaT, 0, 0],\
+                       [0, 1, 0, 0, deltaT, 0],\
+                       [0, 0, 1, 0, 0, deltaT],\
+                       [0, 0, 0, 1, 0, 0],\
+                       [0, 0, 0, 0, 1, 0],
+                       [0, 0, 0, 0, 0, 1]])
+    H0     = sp.identity(6)
+    Q0     = sp.diagflat([0.0001,0.0001,0.0001,0.1,0.1,0.1])
+    R0     = sp.diagflat([6.0,6.0,6.0,0.5,0.5,0.5])
+    filter3d = LinearKalmanFilter3D(F0, H0, P0, Q0, R0, state0)
 
 
 #Linearized version 
