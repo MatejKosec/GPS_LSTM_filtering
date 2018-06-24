@@ -1,17 +1,9 @@
 from __future__ import print_function, division
 import scipy as sp 
 import tensorflow as tf
-from scipy import stats
-from scipy.integrate import cumtrapz
-from scipy import interpolate
-import matplotlib
-matplotlib.use('Agg')
 from matplotlib import pyplot as plt
-from decimal import Decimal
 import numpy as np
 
-pdf  = sp.stats.multivariate_normal.pdf
-cdf  = sp.stats.multivariate_normal.cdf
 import functools
 
 #%% Constants
